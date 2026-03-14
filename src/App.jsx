@@ -79,12 +79,34 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
 
 function EmployeeEditModal({ isOpen, employee, onSave, onDelete, onClose }) {
   const [edited, setEdited] = useState(null);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
 
   useEffect(() => {
-    if (employee) setEdited({ ...employee });
+    if (employee) {
+      setEdited({ ...employee });
+      if (employee.fixedNightStandbySlot) {
+        const [s, e] = employee.fixedNightStandbySlot.split('-');
+        setStartTime(s || "");
+        setEndTime(e || "");
+      } else {
+        setStartTime("");
+        setEndTime("");
+      }
+    }
   }, [employee]);
 
   if (!isOpen || !edited) return null;
+
+  const handleSave = () => {
+    const finalData = { ...edited };
+    if (edited.isFixedNightStandby && startTime && endTime) {
+      finalData.fixedNightStandbySlot = `${startTime}-${endTime}`;
+    } else if (!edited.isFixedNightStandby) {
+      finalData.fixedNightStandbySlot = "";
+    }
+    onSave(finalData);
+  };
 
   return (
     <div className="modal-overlay no-print">
@@ -110,30 +132,36 @@ function EmployeeEditModal({ isOpen, employee, onSave, onDelete, onClose }) {
               순환대상 여부
             </label>
             <label className="checkbox-item">
-              <input type="checkbox" checked={edited.isFixedNightStandby} onChange={e => setEdited({ ...edited, isFixedNightStandby: e.target.checked, fixedNightStandbySlot: e.target.checked ? edited.fixedNightStandbySlot : "" })} />
+              <input type="checkbox" checked={edited.isFixedNightStandby} onChange={e => setEdited({ ...edited, isFixedNightStandby: e.target.checked })} />
               고정대기 여부
             </label>
           </div>
           <div className="input-group">
-            <label>고정 대기 시간대</label>
-            <select 
-              value={edited.fixedNightStandbySlot || ""} 
-              onChange={e => setEdited({ ...edited, fixedNightStandbySlot: e.target.value })}
-              disabled={!edited.isFixedNightStandby}
-              className={!edited.isFixedNightStandby ? 'disabled-input' : ''}
-            >
-              <option value="">없음</option>
-              <option value="22:00-01:00">22:00-01:00</option>
-              <option value="01:00-04:00">01:00-04:00</option>
-              <option value="04:00-07:00">04:00-07:00</option>
-            </select>
+            <label>고정 대기 시간대 설정</label>
+            <div className="time-input-row">
+              <input 
+                type="time" 
+                value={startTime} 
+                onChange={e => setStartTime(e.target.value)}
+                disabled={!edited.isFixedNightStandby}
+                className={!edited.isFixedNightStandby ? 'disabled-input' : ''}
+              />
+              <span>~</span>
+              <input 
+                type="time" 
+                value={endTime} 
+                onChange={e => setEndTime(e.target.value)}
+                disabled={!edited.isFixedNightStandby}
+                className={!edited.isFixedNightStandby ? 'disabled-input' : ''}
+              />
+            </div>
           </div>
         </div>
         <div className="modal-footer split">
           <button className="btn-danger" onClick={() => onDelete(edited.id)}><Trash size={16} /> 삭제</button>
           <div className="action-btns">
             <button className="btn-outline" onClick={onClose}>취소</button>
-            <button className="btn-primary" onClick={() => onSave(edited)}><Save size={16} /> 저장</button>
+            <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
           </div>
         </div>
       </div>

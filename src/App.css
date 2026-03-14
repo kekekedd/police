@@ -94,6 +94,16 @@ main {
   font-weight: normal !important;
 }
 
+.time-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.time-input-row input {
+  flex: 1;
+}
+
 /* Print Area (Real Style) */
 .print-area.real-style {
   background: white;
