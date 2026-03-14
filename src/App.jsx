@@ -77,6 +77,70 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
   );
 }
 
+function EmployeeEditModal({ isOpen, employee, onSave, onDelete, onClose }) {
+  const [edited, setEdited] = useState(null);
+
+  useEffect(() => {
+    if (employee) setEdited({ ...employee });
+  }, [employee]);
+
+  if (!isOpen || !edited) return null;
+
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content admin-modal">
+        <div className="modal-header">
+          <h3>직원 정보 수정</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="modal-body edit-form">
+          <div className="input-group">
+            <label>계급</label>
+            <select value={edited.rank} onChange={e => setEdited({ ...edited, rank: e.target.value })}>
+              {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>성명</label>
+            <input type="text" value={edited.name} onChange={e => setEdited({ ...edited, name: e.target.value })} />
+          </div>
+          <div className="checkbox-list">
+            <label className="checkbox-item">
+              <input type="checkbox" checked={edited.isStandbyRotationEligible} onChange={e => setEdited({ ...edited, isStandbyRotationEligible: e.target.checked })} />
+              순환대상 여부
+            </label>
+            <label className="checkbox-item">
+              <input type="checkbox" checked={edited.isFixedNightStandby} onChange={e => setEdited({ ...edited, isFixedNightStandby: e.target.checked, fixedNightStandbySlot: e.target.checked ? edited.fixedNightStandbySlot : "" })} />
+              고정대기 여부
+            </label>
+          </div>
+          <div className="input-group">
+            <label>고정 대기 시간대</label>
+            <select 
+              value={edited.fixedNightStandbySlot || ""} 
+              onChange={e => setEdited({ ...edited, fixedNightStandbySlot: e.target.value })}
+              disabled={!edited.isFixedNightStandby}
+              className={!edited.isFixedNightStandby ? 'disabled-input' : ''}
+            >
+              <option value="">없음</option>
+              <option value="22:00-01:00">22:00-01:00</option>
+              <option value="01:00-04:00">01:00-04:00</option>
+              <option value="04:00-07:00">04:00-07:00</option>
+            </select>
+          </div>
+        </div>
+        <div className="modal-footer split">
+          <button className="btn-danger" onClick={() => onDelete(edited.id)}><Trash size={16} /> 삭제</button>
+          <div className="action-btns">
+            <button className="btn-outline" onClick={onClose}>취소</button>
+            <button className="btn-primary" onClick={() => onSave(edited)}><Save size={16} /> 저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [employees, setEmployees] = useState(() => {
     const saved = localStorage.getItem('employees');
@@ -109,6 +173,7 @@ function App() {
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '' });
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
+  const [editingEmployee, setEditingEmployee] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('employees', JSON.stringify(employees));
@@ -164,6 +229,25 @@ function App() {
     if (!newEmployee.name) return alert('성명을 입력하세요.');
     setEmployees([...employees, { id: Date.now().toString(), ...newEmployee, team: currentRoster.metadata.teamName, isStandbyRotationEligible: true, isFixedNightStandby: false }]);
     setNewEmployee({ rank: '경위', name: '' });
+  };
+
+  const handleRowClick = (emp) => {
+    if (window.confirm(`${emp.rank} ${emp.name}님 정보를 수정하시겠습니까?`)) {
+      setEditingEmployee(emp);
+    }
+  };
+
+  const updateEmployee = (updated) => {
+    setEmployees(employees.map(e => e.id === updated.id ? updated : e));
+    setEditingEmployee(null);
+  };
+
+  const deleteEmployee = (id) => {
+    if (window.confirm('정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.')) {
+      setEmployees(employees.filter(e => e.id !== id));
+      setSpecialNotes(specialNotes.filter(n => n.employeeId !== id));
+      setEditingEmployee(null);
+    }
   };
 
   const currentTeamEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName);
@@ -271,26 +355,33 @@ function App() {
 
         {activeTab === 'employees' && (
           <div className="admin-section">
-            <h2>직원 명단 관리</h2>
+            <h2>직원 명단 관리 (이름을 눌러 수정)</h2>
             <div className="note-form no-print">
               <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-              <div className="input-group"><label>성명</label><input type="text" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>
+              <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>
               <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
             </div>
-            <table className="admin-table">
-              <thead><tr><th>계급</th><th>성명</th><th>순환대상</th><th>고정대기</th><th>작업</th></tr></thead>
+            <table className="admin-table interactive">
+              <thead><tr><th>계급</th><th>성명</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
               <tbody>
                 {employees.map(emp => (
-                  <tr key={emp.id}>
-                    <td><select value={emp.rank} onChange={e => setEmployees(employees.map(ex => ex.id === emp.id ? {...ex, rank: e.target.value} : ex))}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></td>
-                    <td><input type="text" value={emp.name} onChange={e => setEmployees(employees.map(ex => ex.id === emp.id ? {...ex, name: e.target.value} : ex))} /></td>
-                    <td><input type="checkbox" checked={emp.isStandbyRotationEligible} onChange={e => setEmployees(employees.map(ex => ex.id === emp.id ? {...ex, isStandbyRotationEligible: e.target.checked} : ex))} /></td>
-                    <td><input type="checkbox" checked={emp.isFixedNightStandby} onChange={e => setEmployees(employees.map(ex => ex.id === emp.id ? {...ex, isFixedNightStandby: e.target.checked} : ex))} /></td>
-                    <td><button onClick={() => setEmployees(employees.filter(e => e.id !== emp.id))}><Trash size={14} /></button></td>
+                  <tr key={emp.id} onClick={() => handleRowClick(emp)}>
+                    <td>{emp.rank}</td>
+                    <td className="emp-name-cell">{emp.name}</td>
+                    <td>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
+                    <td>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
+                    <td>{emp.fixedNightStandbySlot || '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <EmployeeEditModal 
+              isOpen={!!editingEmployee} 
+              employee={editingEmployee} 
+              onSave={updateEmployee} 
+              onDelete={deleteEmployee} 
+              onClose={() => setEditingEmployee(null)} 
+            />
           </div>
         )}
 
