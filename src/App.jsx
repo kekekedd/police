@@ -38,33 +38,43 @@ const DUTY_TYPES = [
 const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육", "외근", "기타"];
 const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
 
+const getRankWeight = (rank) => {
+  const index = RANKS.indexOf(rank);
+  return index === -1 ? 99 : index;
+};
+
 function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, onSelect }) {
   if (!isOpen) return null;
+
+  const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+
   return (
     <div className="modal-overlay no-print">
-      <div className="modal-content">
+      <div className="modal-content selection-modal">
         <div className="modal-header">
           <h3>직원 선택 ({duty} / {slot})</h3>
           <button onClick={onClose} className="close-btn"><X size={20} /></button>
         </div>
-        <div className="staff-grid">
-          {employees.map(emp => {
+        <div className="staff-grid scrollable">
+          {sortedEmployees.map(emp => {
             const [s, e] = slot.split('-');
             const availability = checkAvailability(emp, s, e, specialNotes);
             const isSelected = selectedIds.includes(emp.id);
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
+            
             return (
               <div 
                 key={emp.id} 
-                className={`staff-card ${isSelected ? 'selected' : ''} ${!availability.available ? 'unavailable' : ''}`}
+                className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${!availability.available ? 'disabled' : ''}`}
                 onClick={() => availability.available && onSelect(emp.id)}
               >
-                <div className="staff-info">
-                  <span className="rank">{emp.rank}</span>
-                  <span className="name">{emp.name}</span>
-                </div>
-                {note && <div className={`note-tag mini ${note.type}`}>{note.type}</div>}
-                {!availability.available && <span className="reason-text">{availability.reason}</span>}
+                <div className="staff-rank">{emp.rank}</div>
+                <div className="staff-name">{emp.name}</div>
+                {note && (
+                  <div className={`staff-note-label ${note.type}`}>
+                    {note.type}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -278,7 +288,11 @@ function App() {
     }
   };
 
-  const currentTeamEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName);
+  const currentTeamEmployees = employees
+    .filter(e => e.team === currentRoster.metadata.teamName)
+    .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+
+  const sortedAllEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
 
   return (
     <div className="app-container">
@@ -392,7 +406,7 @@ function App() {
             <table className="admin-table interactive">
               <thead><tr><th>계급</th><th>성명</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
               <tbody>
-                {employees.map(emp => (
+                {sortedAllEmployees.map(emp => (
                   <tr key={emp.id} onClick={() => handleRowClick(emp)}>
                     <td>{emp.rank}</td>
                     <td className="emp-name-cell">{emp.name}</td>
@@ -417,7 +431,7 @@ function App() {
           <div className="admin-section">
             <h2>특이사항 관리</h2>
             <div className="note-form no-print">
-              <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+              <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{sortedAllEmployees.map(e => <option key={e.id} value={e.id}>{e.rank} {e.name}</option>)}</select>
               <select value={newNote.type} onChange={e => setNewNote({...newNote, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
               <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} />
               <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} />
@@ -428,7 +442,7 @@ function App() {
               <tbody>
                 {specialNotes.map(n => (
                   <tr key={n.id}>
-                    <td>{employees.find(e => e.id === n.employeeId)?.name}</td><td className={`note-tag ${n.type}`}>{n.type}</td><td>{n.startTime} ~ {n.endTime}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
+                    <td>{employees.find(e => e.id === n.employeeId)?.rank} {employees.find(e => e.id === n.employeeId)?.name}</td><td className={`note-tag ${n.type}`}>{n.type}</td><td>{n.startTime} ~ {n.endTime}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
                   </tr>
                 ))}
               </tbody>
