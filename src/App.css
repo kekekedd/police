@@ -10,8 +10,6 @@
 body {
   margin: 0;
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-light);
 }
 
@@ -30,14 +28,6 @@ header {
   align-items: center;
 }
 
-header h1 {
-  margin: 0;
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 nav {
   display: flex;
   gap: 1rem;
@@ -48,10 +38,8 @@ nav button {
   border: none;
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  font-size: 1rem;
   padding: 0.5rem 1rem;
   border-radius: 4px;
-  transition: all 0.2s;
 }
 
 nav button.active {
@@ -89,190 +77,218 @@ main {
 .input-group label {
   font-size: 0.875rem;
   font-weight: bold;
-  color: var(--secondary-color);
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 
-.input-group input, .input-group select {
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.btn-primary, .btn-secondary, .btn-outline, .btn-danger {
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: bold;
-  transition: opacity 0.2s;
-}
-
-.btn-primary { background: var(--primary-color); color: white; border: none; }
-.btn-secondary { background: var(--secondary-color); color: white; border: none; }
-.btn-outline { background: white; color: var(--secondary-color); border: 1px solid var(--secondary-color); }
-.btn-danger { background: var(--danger-color); color: white; border: none; }
-
-.btn-primary:hover, .btn-secondary:hover { opacity: 0.9; }
-
-/* Roster Table Styles */
-.print-area {
+/* Print Area (Real Style) */
+.print-area.real-style {
   background: white;
   padding: 2rem;
   border: 1px solid #ccc;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  color: black;
 }
 
-.roster-table {
+.doc-title {
+  text-align: center;
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  letter-spacing: 2px;
+}
+
+/* Summary Table */
+.summary-table.real {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  margin-bottom: 1.5rem;
+  border: 2px solid black;
 }
 
-.roster-table th, .roster-table td {
-  border: 1px solid var(--border-color);
-  padding: 8px;
+.summary-table.real td {
+  border: 1px solid black;
+  padding: 6px;
   text-align: center;
+  font-size: 0.9rem;
+}
+
+.summary-table.real .label {
+  background-color: #f2f2f2;
+  font-weight: bold;
+}
+
+.summary-counts .label {
+  font-size: 0.8rem;
+}
+
+.print-input {
+  border: none;
+  width: 100%;
+  text-align: center;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+/* Worker Section */
+.worker-section.real {
+  margin-bottom: 1.5rem;
+}
+
+.worker-table.real {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid black;
+}
+
+.worker-table.real th, .worker-table.real td {
+  border: 1px solid black;
+  padding: 4px;
   font-size: 0.85rem;
 }
 
-.roster-table th {
-  background-color: #f0f0f0;
-  font-weight: bold;
+.worker-table.real thead th {
+  background-color: #f2f2f2;
+}
+
+.worker-table.real .sub-header th {
+  background-color: #f9f9f9;
+}
+
+/* Main Roster Table */
+.roster-table.real {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid black;
+}
+
+.roster-table.real th, .roster-table.real td {
+  border: 1px solid black;
+  padding: 4px;
+  height: 60px;
+  vertical-align: middle;
+}
+
+.roster-table.real th {
+  background-color: #f2f2f2;
+  font-size: 0.8rem;
+  height: auto;
+  padding: 8px 4px;
 }
 
 .duty-label {
   background-color: #f9f9f9;
   font-weight: bold;
-  width: 120px;
+  font-size: 0.85rem;
+  text-align: center;
 }
 
-.roster-table select {
+.time-header {
+  white-space: nowrap;
+}
+
+.center { text-align: center; }
+
+.focus-row { height: 40px !important; }
+.focus-cell { padding: 0 !important; }
+.focus-input {
   width: 100%;
+  height: 100%;
   border: none;
-  background: transparent;
+  text-align: center;
+  font-size: 0.75rem;
+  background-color: #fff9c4;
+}
+
+.staff-names-v {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.staff-name-v {
+  font-size: 0.85rem;
+  line-height: 1.1;
+}
+
+.assignment-cell {
   cursor: pointer;
-  text-align-last: center;
-  padding: 4px;
 }
 
-.roster-table select:focus {
-  outline: 2px solid var(--primary-color);
-}
-
-/* Admin Table */
-.admin-table {
-  width: 100%;
-  background: white;
-  border-collapse: collapse;
-  margin-top: 1rem;
-}
-
-.admin-table th, .admin-table td {
-  border: 1px solid #eee;
-  padding: 12px;
-  text-align: left;
-}
-
-.admin-table th {
-  background: #f8f9fa;
+.shift-mark {
+  font-size: 1.5rem;
   font-weight: bold;
 }
 
-/* Print Overrides */
-@media print {
-  .no-print {
-    display: none !important;
-  }
-  
-  body {
-    background: white;
-  }
-
-  main {
-    padding: 0;
-    margin: 0;
-    max-width: none;
-  }
-
-  .print-area {
-    padding: 0;
-    border: none;
-    box-shadow: none;
-  }
-
-  .print-only {
-    display: block !important;
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-
-  .roster-table th, .roster-table td {
-    padding: 4px;
-  }
-
-  /* Hide select arrow in print */
-  select {
-    appearance: none;
-    -webkit-appearance: none;
-  }
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 1000;
 }
 
-/* Admin Section */
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 600px;
+}
+
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.staff-card {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.staff-card.selected {
+  background-color: #e8eaf6;
+  border-color: var(--primary-color);
+}
+
+.staff-card.unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Admin Styles */
 .admin-section {
   background: white;
   padding: 2rem;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.note-form {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  align-items: center;
-  flex-wrap: wrap;
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.note-form input, .note-form select {
-  padding: 0.5rem;
+.admin-table th, .admin-table td {
   border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 8px;
 }
 
 .note-tag {
-  padding: 4px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.75rem;
-  font-weight: bold;
 }
 
-.note-tag.육아시간 { background-color: #fff176; color: #827717; }
-.note-tag.지원근무 { background-color: #bbdefb; color: #0d47a1; }
-.note-tag.휴가, .note-tag.병가 { background-color: #ffcdd2; color: #b71c1c; }
-.note-tag.교육 { background-color: #e1bee7; color: #4a148c; }
-.note-tag.외근 { background-color: #c8e6c9; color: #1b5e20; }
+.note-tag.육아시간 { background: #fff176; }
+.note-tag.지원근무 { background: #bbdefb; }
+.note-tag.휴가 { background: #ffcdd2; }
 
-.doc-header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.doc-header h2 {
-  font-size: 2rem;
-  text-decoration: underline;
-  text-underline-offset: 8px;
-  margin-bottom: 1rem;
-}
-
-.doc-meta {
-  display: flex;
-  justify-content: center;
-  gap: 3rem;
-  font-weight: bold;
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .print-area.real-style { border: none; padding: 0; }
+  main { padding: 0; margin: 0; }
 }
