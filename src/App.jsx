@@ -222,10 +222,30 @@ function App() {
 
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
+    const employee = employees.find(e => e.id === id);
+    
     setCurrentRoster(prev => {
-      const currentIds = prev.assignments[key] || [];
-      const newIds = currentIds.includes(id) ? currentIds.filter(i => i !== id) : [...currentIds, id];
-      return { ...prev, assignments: { ...prev.assignments, [key]: newIds } };
+      const currentIdsInThisCell = prev.assignments[key] || [];
+      const isAlreadySelectedInThisCell = currentIdsInThisCell.includes(id);
+
+      // 선택 해제 시
+      if (isAlreadySelectedInThisCell) {
+        return { ...prev, assignments: { ...prev.assignments, [key]: currentIdsInThisCell.filter(i => i !== id) } };
+      }
+
+      // 새로 선택 시 중복 근무 체크
+      const duplicateDuty = DUTY_TYPES.find(d => {
+        if (d === modalState.duty) return false;
+        const otherKey = `${modalState.slot}_${d}`;
+        return (prev.assignments[otherKey] || []).includes(id);
+      });
+
+      if (duplicateDuty) {
+        alert(`${employee.rank} ${employee.name}님은 현재 동일한 시간대에 [${duplicateDuty}] 근무에 이미 배치되어 있습니다.`);
+        return prev;
+      }
+
+      return { ...prev, assignments: { ...prev.assignments, [key]: [...currentIdsInThisCell, id] } };
     });
   };
 
@@ -238,13 +258,22 @@ function App() {
     const rosters = JSON.parse(localStorage.getItem('rosters') || '[]');
     const lastNight = rosters.filter(r => r.shiftType === '야간').sort((a,b) => b.date.localeCompare(a.date))[0];
     const { assignments, warnings } = rotateStandbyGroups(lastNight, employees, specialNotes);
-    if (warnings.length > 0) alert("경고:\n" + warnings.join('\n'));
+    if (warnings.length > 0) alert("순번 생성 경고:\n" + warnings.join('\n'));
+    
     setCurrentRoster(prev => {
       const newAssignments = { ...prev.assignments };
-      assignments.forEach(g => { newAssignments[`${g.slot}_대기근무`] = [g.employeeId]; });
+      // 기존 대기근무 초기화
+      Object.keys(newAssignments).forEach(key => {
+        if (key.includes('_대기근무')) delete newAssignments[key];
+      });
+      // 새 순번 반영
+      assignments.forEach(g => { 
+        const key = `${g.slot}_대기근무`;
+        newAssignments[key] = [...(newAssignments[key] || []), g.employeeId]; 
+      });
       return { ...prev, assignments: newAssignments };
     });
-    alert('자동 순번이 반영되었습니다.');
+    alert('이전 야간 기반 자동 순번이 반영되었습니다.');
   };
 
   const handleSave = () => {
@@ -294,6 +323,9 @@ function App() {
 
   const sortedAllEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
 
+  // 사고자 명단 필터링 (병가, 휴가, 기타 등록된 직원)
+  const casualties = specialNotes.filter(n => ['병가', '휴가', '기타'].includes(n.type));
+
   return (
     <div className="app-container">
       <header className="no-print">
@@ -312,7 +344,7 @@ function App() {
               <div className="input-group"><label><Calendar size={16} /> 일자</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
               <div className="input-group"><label>구분</label><select value={currentRoster.shiftType} onChange={e => setCurrentRoster({...currentRoster, shiftType: e.target.value})}><option value="주간">주간</option><option value="야간">야간</option></select></div>
               <div className="input-group"><label>팀명</label><input type="text" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
-              <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'}><RefreshCw size={16} /> 자동 순번</button>
+              <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'} title="이전 야간 기반으로 대기조 3개조를 자동 생성합니다."><RefreshCw size={16} /> 자동 순번</button>
               <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
               <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
             </div>
@@ -335,7 +367,7 @@ function App() {
                   <tr className="summary-values">
                     <td>{currentRoster.metadata.totalCount}</td><td>1</td>
                     <td colSpan="3">{Object.entries(currentRoster.metadata.teamCounts).map(([t, c]) => <span key={t}>{t}({c}) </span>)}</td>
-                    <td>{currentRoster.metadata.adminCount}</td><td>{currentRoster.metadata.longTermAbsent}</td><td>0</td>
+                    <td>{currentRoster.metadata.adminCount}</td><td>{casualties.length}</td><td>0</td>
                   </tr>
                 </tbody>
               </table>
@@ -349,12 +381,12 @@ function App() {
                   <tbody>
                     {Array.from({ length: 14 }).map((_, i) => {
                       const emp = currentTeamEmployees[i];
-                      const note = specialNotes[i];
-                      const absent = note ? employees.find(e => e.id === note.employeeId) : null;
+                      const casualty = casualties[i];
+                      const cEmp = casualty ? employees.find(e => e.id === casualty.employeeId) : null;
                       return (
                         <tr key={i}>
                           <td className="center">{i + 1}</td><td className="center">{emp?.rank || ''}</td><td className="center">{emp?.name || ''}</td>
-                          <td className="center">{absent?.rank || ''}</td><td className="center">{absent?.name || ''}</td><td className="center">{note?.type || ''}</td>
+                          <td className="center">{cEmp?.rank || ''}</td><td className="center">{cEmp?.name || ''}</td><td className="center">{casualty?.type || ''}</td>
                         </tr>
                       );
                     })}
@@ -440,11 +472,14 @@ function App() {
             <table className="admin-table">
               <thead><tr><th>직원</th><th>유형</th><th>시간</th><th>작업</th></tr></thead>
               <tbody>
-                {specialNotes.map(n => (
-                  <tr key={n.id}>
-                    <td>{employees.find(e => e.id === n.employeeId)?.rank} {employees.find(e => e.id === n.employeeId)?.name}</td><td className={`note-tag ${n.type}`}>{n.type}</td><td>{n.startTime} ~ {n.endTime}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
-                  </tr>
-                ))}
+                {specialNotes.map(n => {
+                  const emp = employees.find(e => e.id === n.employeeId);
+                  return (
+                    <tr key={n.id}>
+                      <td>{emp?.rank} {emp?.name}</td><td className={`note-tag ${n.type}`}>{n.type}</td><td>{n.startTime} ~ {n.endTime}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

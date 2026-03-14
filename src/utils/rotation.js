@@ -20,7 +20,7 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
   if (e1 <= s1) e1 += 24 * 60;
   if (e2 <= s2) e2 += 24 * 60;
 
-  // 두 기간이 겹치는지 확인하기 위해 두 가지 경우를 모두 체크 (기본 + 다음날)
+  // 두 기간이 겹치는지 확인 (조금이라도 겹치면 true)
   const overlap = (a_s, a_e, b_s, b_e) => Math.max(a_s, b_s) < Math.min(a_e, b_e);
 
   if (overlap(s1, e1, s2, e2)) return true;
@@ -33,41 +33,47 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 // 특정 직원의 시간대별 배치 가능 여부 계산
 export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) => {
   if (!employee) return { available: false, reason: '직원 정보 없음' };
+  
   const notes = specialNotes.filter(n => n.employeeId === employee.id);
   
   for (const note of notes) {
-    if (note.isAllDay) return { available: false, reason: note.type };
+    // 병가, 휴가 등 '사고자' 개념의 유형은 해당 근무 전체에서 제외 (전부 배치 불가)
+    if (['휴가', '병가', '기타'].includes(note.type) || note.isAllDay) {
+      return { available: false, reason: note.type };
+    }
+    // 일반 특이사항 (육아시간, 지원근무 등)은 시간 겹침 여부 판단
     if (isTimeOverlapping(slotStart, slotEnd, note.startTime, note.endTime)) {
-      return { available: false, reason: `${note.type} (${note.startTime}~${note.endTime})` };
+      return { available: false, reason: `${note.type}` };
     }
   }
   return { available: true };
 };
 
-// 야간 대기조 순환 로직
+// 야간 대기조 순환 로직 (3개조: 22-01, 01-04, 04-07)
 export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
-  const slots = [
-    "22:00-01:00", 
-    "01:00-02:00", "02:00-04:00",
-    "04:00-06:00", "06:00-07:00"
+  const standbyBlocks = [
+    { label: "22:00-01:00", slots: ["22:00-01:00"] },
+    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"] },
+    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"] }
   ];
 
-  const fixedEmployees = employees.filter(e => e.isFixedNightStandby);
+  // 순환 대상자 풀 (고정 대기 제외)
   const rotationPool = employees.filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby);
   
-  // 이전 야간 순서 파악 (assignments 구조가 배열로 변경됨을 고려)
+  // 이전 야간의 대기조 구성 파악
   const prevAssignments = prevRoster?.assignments || {};
-  const prevOrderedIds = [];
-  slots.forEach(slot => {
-    const ids = prevAssignments[`${slot}_대기근무`] || [];
+  const prevStandbyOrder = [];
+  
+  standbyBlocks.forEach(block => {
+    // 각 블록의 첫 번째 슬롯을 기준으로 이전 근무자 파악
+    const ids = prevAssignments[`${block.slots[0]}_대기근무`] || [];
     ids.forEach(id => {
-      if (!fixedEmployees.find(e => e.id === id)) {
-        prevOrderedIds.push(id);
-      }
+      if (!prevStandbyOrder.includes(id)) prevStandbyOrder.push(id);
     });
   });
 
-  const lastId = prevOrderedIds[prevOrderedIds.length - 1];
+  // 순번 계산을 위한 기준점 (이전 대기조의 마지막 사람 다음부터)
+  const lastId = prevStandbyOrder[prevStandbyOrder.length - 1];
   let startIndex = rotationPool.findIndex(e => e.id === lastId);
   if (startIndex === -1) startIndex = 0;
   else startIndex = (startIndex + 1) % rotationPool.length;
@@ -76,48 +82,41 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
   const warnings = [];
   const usedIds = new Set();
 
-  slots.forEach(slot => {
-    const [ss, se] = slot.split('-');
-    
-    // 1. 고정 대기자 확인
-    const fixed = fixedEmployees.find(e => {
-      if (!e.fixedNightStandbySlot) return false;
-      const [fs, fe] = e.fixedNightStandbySlot.split('-');
-      return isTimeOverlapping(fs, fe, ss, se);
-    });
+  // 블록당 인원수 배분 (전체 인원 / 3개조)
+  const countPerGroup = Math.floor(rotationPool.length / 3);
+  const remainder = rotationPool.length % 3;
 
-    if (fixed) {
-      const { available, reason } = checkAvailability(fixed, ss, se, specialNotes);
-      if (available) {
-        finalAssignments.push({ slot, employeeId: fixed.id });
-        usedIds.add(fixed.id);
-        return;
-      } else {
-        warnings.push(`${fixed.rank} ${fixed.name}님은 고정 대기자이나 ${reason} 사유로 배치가 불가능합니다. 대체 인원을 추천합니다.`);
-      }
-    }
+  standbyBlocks.forEach((block, groupIdx) => {
+    let targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
+    let assignedInGroup = 0;
 
-    // 2. 순환 풀에서 배치 (고정 대기자 부재 시 포함)
-    let assigned = false;
-    for (let j = 0; j < rotationPool.length; j++) {
-      const candidateIndex = (startIndex + j) % rotationPool.length;
+    for (let i = 0; i < rotationPool.length && assignedInGroup < targetCount; i++) {
+      const candidateIndex = (startIndex + i) % rotationPool.length;
       const candidate = rotationPool[candidateIndex];
-      
+
       if (usedIds.has(candidate.id)) continue;
 
-      const { available } = checkAvailability(candidate, ss, se, specialNotes);
-      
-      if (available) {
-        finalAssignments.push({ slot, employeeId: candidate.id });
+      // 해당 블록의 모든 슬롯에 대해 가용성 체크
+      const isAvailable = block.slots.every(slot => {
+        const [s, e] = slot.split('-');
+        return checkAvailability(candidate, s, e, specialNotes).available;
+      });
+
+      if (isAvailable) {
+        block.slots.forEach(slot => {
+          finalAssignments.push({ slot, employeeId: candidate.id });
+        });
         usedIds.add(candidate.id);
-        startIndex = (candidateIndex + 1) % rotationPool.length;
-        assigned = true;
-        break;
+        assignedInGroup++;
+        // 다음 그룹을 위해 시작 인덱스 업데이트
+        if (assignedInGroup === targetCount) {
+          startIndex = (candidateIndex + 1) % rotationPool.length;
+        }
       }
     }
 
-    if (!assigned) {
-      warnings.push(`${slot} 시간대에 배치 가능한 인원이 없습니다.`);
+    if (assignedInGroup < targetCount) {
+      warnings.push(`${block.label} 대기조 인원이 부족합니다. (${assignedInGroup}/${targetCount})`);
     }
   });
 
