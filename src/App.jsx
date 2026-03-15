@@ -380,7 +380,7 @@ function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, se
               >
                 <div className="staff-name">{place}</div>
                 {isAlreadyUsed && !isSelected && (
-                  <div className="staff-note-label warning" style={{ fontSize: '0.6rem' }}>사용 중</div>
+                  <div className="staff-note-label warning" style={{ fontSize: '0.6rem' }}>배치됨</div>
                 )}
               </div>
             );
