@@ -431,6 +431,25 @@ function App() {
         {activeTab === 'employees' && (
           <div className="admin-section">
             <h2>직원 명단 관리 (이름을 눌러 수정)</h2>
+            
+            <div className="stats-summary no-print">
+              <div className="stat-item total">
+                <span className="stat-label">전체 인원</span>
+                <span className="stat-value">{employees.length}명</span>
+              </div>
+              <div className="stat-divider"></div>
+              {RANKS.map(rank => {
+                const count = employees.filter(e => e.rank === rank).length;
+                if (count === 0) return null;
+                return (
+                  <div key={rank} className="stat-item">
+                    <span className="stat-label">{rank}</span>
+                    <span className="stat-value">{count}명</span>
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="note-form no-print">
               <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
               <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>

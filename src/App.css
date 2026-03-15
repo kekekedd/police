@@ -233,6 +233,47 @@ main {
   border-radius: 8px;
 }
 
+.stats-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid #e9ecef;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-item.total .stat-value {
+  color: var(--primary-color);
+  font-size: 1.25rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: bold;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 30px;
+  background: #dee2e6;
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;
