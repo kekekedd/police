@@ -76,7 +76,7 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
             }
 
             const isBlocked = !availability.available || (otherDuty && !isSelected);
-            const reason = !availability.available ? availability.reason : (otherDuty ? `${otherDuty} 배치됨` : '');
+            const blockReason = !availability.available ? availability.reason : (otherDuty ? `${otherDuty} 배치됨` : '');
             
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
             
@@ -85,13 +85,19 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
                 key={emp.id} 
                 className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isBlocked && !isSelected ? 'disabled' : ''}`}
                 onClick={() => (!isBlocked || isSelected) && onSelect(emp.id)}
-                title={isBlocked && !isSelected ? `배치 불가: ${reason}` : ''}
               >
                 <div className="staff-rank">{emp.rank}</div>
                 <div className="staff-name">{emp.name}</div>
+                {/* 특이사항 표시 (휴가, 육아시간 등) */}
                 {note && (
                   <div className={`staff-note-label ${note.type}`}>
                     {note.type}
+                  </div>
+                )}
+                {/* 중복 근무 정보 표시 (다른 근무 배치 시) */}
+                {otherDuty && !note && (
+                  <div className="staff-note-label warning">
+                    {otherDuty}
                   </div>
                 )}
               </div>

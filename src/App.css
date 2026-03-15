@@ -450,6 +450,7 @@ tr.dragging {
 .staff-note-label.휴가, .staff-note-label.병가 { background: #ffcdd2; color: #b71c1c; }
 .staff-note-label.교육 { background: #e1bee7; color: #4a148c; }
 .staff-note-label.외근 { background: #c8e6c9; color: #1b5e20; }
+.staff-note-label.warning { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
 
 /* Modals General */
 .modal-overlay {
