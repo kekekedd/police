@@ -81,7 +81,33 @@ main {
 .input-group label {
   font-size: 0.875rem;
   font-weight: bold;
+  color: #555;
 }
+
+.roster-header-inputs .input-group input {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background-color: #f8f9fa;
+  transition: all 0.2s;
+  height: 36px;
+  color: #333;
+}
+
+.roster-header-inputs .input-group input:hover {
+  border-color: #ccc;
+}
+
+.roster-header-inputs .input-group input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1);
+}
+
+.team-name-input { width: 80px; }
+.chief-name-input, .leader-name-input { width: 100px; }
 
 .toggle-buttons {
   display: flex;

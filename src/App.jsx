@@ -562,9 +562,9 @@ function App() {
                   >야간</button>
                 </div>
               </div>
-              <div className="input-group"><label>팀명</label><input type="text" style={{ width: '80px' }} value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
-              <div className="input-group"><label>지구대장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
-              <div className="input-group"><label>순찰팀장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
+              <div className="input-group"><label>팀명</label><input type="text" className="team-name-input" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
+              <div className="input-group"><label>지구대장</label><input type="text" className="chief-name-input" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
+              <div className="input-group"><label>순찰팀장</label><input type="text" className="leader-name-input" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
               <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'} title="이전 야간 기반으로 대기조 3개조를 자동 생성합니다."><RefreshCw size={16} /> 자동 순번</button>
               <button className="btn-outline" onClick={() => setVolunteerModalOpen(true)}><Plus size={16} /> 자원근무</button>
               <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
