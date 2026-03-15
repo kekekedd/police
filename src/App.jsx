@@ -697,18 +697,21 @@ function App() {
 
   const addTeam = () => {
     if (!newTeamName) return;
+    if (settings.teams?.includes(newTeamName)) return alert('이미 존재하는 팀명입니다.');
     setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
     setNewTeamName('');
   };
 
   const addFocusPlace = () => {
     if (!newFocusPlace) return;
+    if (settings.focusPlaces?.includes(newFocusPlace)) return alert('이미 존재하는 장소명입니다.');
     setSettings({ ...settings, focusPlaces: [...(settings.focusPlaces || []), newFocusPlace] });
     setNewFocusPlace('');
   };
 
   const addDutyType = () => {
     if (!newDutyType) return;
+    if (settings.dutyTypes?.some(d => d.name === newDutyType)) return alert('이미 존재하는 근무 유형입니다.');
     setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, { name: newDutyType, shift: newDutyShift }] });
     setNewDutyType('');
     setNewDutyShift('공통');
@@ -716,12 +719,14 @@ function App() {
 
   const addDayTimeSlot = () => {
     if (!newDayTimeSlot) return;
+    if (settings.dayTimeSlots?.includes(newDayTimeSlot)) return alert('이미 존재하는 시간대입니다.');
     setSettings({ ...settings, dayTimeSlots: [...(settings.dayTimeSlots || DAY_TIME_SLOTS), newDayTimeSlot] });
     setNewDayTimeSlot('');
   };
 
   const addNightTimeSlot = () => {
     if (!newNightTimeSlot) return;
+    if (settings.nightTimeSlots?.includes(newNightTimeSlot)) return alert('이미 존재하는 시간대입니다.');
     setSettings({ ...settings, nightTimeSlots: [...(settings.nightTimeSlots || NIGHT_TIME_SLOTS), newNightTimeSlot] });
     setNewNightTimeSlot('');
   };
