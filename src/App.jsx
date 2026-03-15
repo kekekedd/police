@@ -131,6 +131,109 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
   );
 }
 
+function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
+  const [newEmp, setNewEmp] = useState({ 
+    rank: '경위', 
+    name: '', 
+    team: settings.teams?.[0] || '1팀',
+    isStandbyRotationEligible: true,
+    isFixedNightStandby: false,
+    isNightShiftExcluded: false
+  });
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleAdd = () => {
+    if (!newEmp.name) return alert('성명을 입력하세요.');
+    const finalData = { ...newEmp, id: Date.now().toString() };
+    if (newEmp.isFixedNightStandby && startTime && endTime) {
+      finalData.fixedNightStandbySlot = `${startTime}-${endTime}`;
+    }
+    onSave(finalData);
+    // Reset state for next time
+    setNewEmp({ 
+      rank: '경위', 
+      name: '', 
+      team: settings.teams?.[0] || '1팀',
+      isStandbyRotationEligible: true,
+      isFixedNightStandby: false,
+      isNightShiftExcluded: false
+    });
+    setStartTime("");
+    setEndTime("");
+  };
+
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content admin-modal">
+        <div className="modal-header">
+          <h3>신규 직원 등록</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="modal-body edit-form">
+          <div className="input-group">
+            <label>계급</label>
+            <select value={newEmp.rank} onChange={e => setNewEmp({ ...newEmp, rank: e.target.value })}>
+              {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>성명</label>
+            <input type="text" placeholder="성명 입력" value={newEmp.name} onChange={e => setNewEmp({ ...newEmp, name: e.target.value })} />
+          </div>
+          <div className="input-group">
+            <label>팀</label>
+            <select value={newEmp.team} onChange={e => setNewEmp({ ...newEmp, team: e.target.value })}>
+              {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="checkbox-list">
+            <label className="checkbox-item">
+              <input type="checkbox" checked={newEmp.isStandbyRotationEligible} onChange={e => setNewEmp({ ...newEmp, isStandbyRotationEligible: e.target.checked })} />
+              순환대상 여부
+            </label>
+            <label className="checkbox-item">
+              <input type="checkbox" checked={newEmp.isFixedNightStandby} onChange={e => setNewEmp({ ...newEmp, isFixedNightStandby: e.target.checked })} />
+              고정 대기 여부
+            </label>
+            <label className="checkbox-item">
+              <input type="checkbox" checked={newEmp.isNightShiftExcluded} onChange={e => setNewEmp({ ...newEmp, isNightShiftExcluded: e.target.checked })} />
+              야간 근무 제외
+            </label>
+          </div>
+
+          <div className="input-group">
+            <label>고정 대기 시간대 설정</label>
+            <div className="time-input-row">
+              <input 
+                type="time" 
+                value={startTime} 
+                onChange={e => setStartTime(e.target.value)}
+                disabled={!newEmp.isFixedNightStandby}
+                className={!newEmp.isFixedNightStandby ? 'disabled-input' : ''}
+              />
+              <span>~</span>
+              <input 
+                type="time" 
+                value={endTime} 
+                onChange={e => setEndTime(e.target.value)}
+                disabled={!newEmp.isFixedNightStandby}
+                className={!newEmp.isFixedNightStandby ? 'disabled-input' : ''}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-outline" onClick={onClose}>취소</button>
+          <button className="btn-primary" onClick={handleAdd}><Plus size={16} /> 등록</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClose }) {
   const [edited, setEdited] = useState(null);
   const [startTime, setStartTime] = useState("");
@@ -333,7 +436,6 @@ function App() {
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
-  const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
   const [newDutyShift, setNewDutyShift] = useState('공통');
   const [newTeamName, setNewTeamName] = useState('');
@@ -479,10 +581,9 @@ function App() {
 
   const deleteNote = (id) => setSpecialNotes(specialNotes.filter(n => n.id !== id));
 
-  const addEmployee = () => {
-    if (!newEmployee.name) return alert('성명을 입력하세요.');
-    setEmployees([...employees, { id: Date.now().toString(), ...newEmployee, isStandbyRotationEligible: true, isFixedNightStandby: false }]);
-    setNewEmployee({ ...newEmployee, name: '' });
+  const addEmployee = (newStaffData) => {
+    const updatedEmployees = [...employees, newStaffData].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+    setEmployees(updatedEmployees);
     setIsAddingEmployee(false);
   };
 
@@ -545,13 +646,6 @@ function App() {
     newList.splice(targetIdx, 0, draggedItem);
     setSettings({ ...settings, [key]: newList });
     setDraggedIdx(null);
-  };
-
-  const sortByRank = () => {
-    if (window.confirm('모든 직원을 계급순으로 정렬하시겠습니까? (수동 조정된 순서가 초기화됩니다)')) {
-      const sorted = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
-      setEmployees(sorted);
-    }
   };
 
   // 사고자 명단 필터링 및 정렬 (전체 직원 순서 기준)
@@ -805,45 +899,23 @@ function App() {
                 
               return (
                 <>
-                  <div className="stats-summary no-print" style={{ justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                      <div className="stat-item total">
-                        <span className="stat-label">{employeeTabTeam} 인원</span>
-                        <span className="stat-value">{teamEmployees.length}명</span>
-                      </div>
-                      <div className="stat-divider"></div>
-                      {RANKS.map(rank => {
-                        const count = teamEmployees.filter(e => e.rank === rank).length;
-                        if (count === 0) return null;
-                        return (
-                          <div key={rank} className="stat-item">
-                            <span className="stat-label">{rank}</span>
-                            <span className="stat-value">{count}명</span>
-                          </div>
-                        );
-                      })}
+                  <div className="stats-summary no-print">
+                    <div className="stat-item total">
+                      <span className="stat-label">{employeeTabTeam} 인원</span>
+                      <span className="stat-value">{teamEmployees.length}명</span>
                     </div>
-                    {!isStaffOrderEditMode && (
-                      <button className="btn-outline-small" onClick={sortByRank}>전체 계급순 정렬</button>
-                    )}
+                    <div className="stat-divider"></div>
+                    {RANKS.map(rank => {
+                      const count = teamEmployees.filter(e => e.rank === rank).length;
+                      if (count === 0) return null;
+                      return (
+                        <div key={rank} className="stat-item">
+                          <span className="stat-label">{rank}</span>
+                          <span className="stat-value">{count}명</span>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  {isAddingEmployee && (
-                    <div className="note-form no-print animate-fade-in">
-                      <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                      <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} onKeyDown={e => e.key === 'Enter' && addEmployee()} /></div>
-                      <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
-                        {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select></div>
-                      <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: '1.2rem' }}>
-                        <label className="checkbox-item">
-                          <input type="checkbox" checked={newEmployee.isNightShiftExcluded || false} onChange={e => setNewEmployee({...newEmployee, isNightShiftExcluded: e.target.checked})} />
-                          야간 제외
-                        </label>
-                      </div>
-                      <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
-                    </div>
-                  )}
 
                   <table className="admin-table interactive">
                     <thead>
@@ -885,6 +957,12 @@ function App() {
               );
             })()}
             
+            <EmployeeAddModal 
+              isOpen={isAddingEmployee} 
+              settings={settings}
+              onSave={addEmployee} 
+              onClose={() => setIsAddingEmployee(false)} 
+            />
             <EmployeeEditModal 
               isOpen={!!editingEmployee} 
               employee={editingEmployee} 
