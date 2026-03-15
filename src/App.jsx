@@ -185,6 +185,41 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
   );
 }
 
+function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, selectedValue, onSelect }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content selection-modal">
+        <div className="modal-header">
+          <h3>중점 구역 선택 ({slot})</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="staff-grid scrollable">
+          <div 
+            className={`staff-card-v2 ${!selectedValue ? 'selected' : ''}`}
+            onClick={() => { onSelect(''); onClose(); }}
+          >
+            <div className="staff-name">선택 안함</div>
+          </div>
+          {focusPlaces.map(place => (
+            <div 
+              key={place} 
+              className={`staff-card-v2 ${selectedValue === place ? 'selected' : ''}`}
+              onClick={() => { onSelect(place); onClose(); }}
+            >
+              <div className="staff-name">{place}</div>
+            </div>
+          ))}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-outline" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [employees, setEmployees] = useState(() => {
     const saved = localStorage.getItem('employees');
@@ -243,6 +278,7 @@ function App() {
   const [editingFocusIdx, setEditingFocusIdx] = useState(null);
   const [editingFocusValue, setEditingFocusValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
+  const [focusModalState, setFocusModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   useEffect(() => {
@@ -477,17 +513,12 @@ function App() {
                         {currentTimeSlots.map(slot => {
                           const key = `${slot}_${duty}`;
                           if (isFocus) return (
-                            <td key={slot} className="focus-cell">
-                              <select 
-                                className="focus-select" 
-                                value={currentRoster.focusAreas[key] || ''} 
-                                onChange={e => handleFocusChange(slot, duty, e.target.value)}
-                              >
-                                <option value="">선택</option>
-                                {settings.focusPlaces?.map(place => (
-                                  <option key={place} value={place}>{place}</option>
-                                ))}
-                              </select>
+                            <td 
+                              key={slot} 
+                              className="focus-cell assignment-cell" 
+                              onClick={() => setFocusModalState({ isOpen: true, slot, duty })}
+                            >
+                              <div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div>
                             </td>
                           );
                           const ids = currentRoster.assignments[key] || [];
@@ -511,6 +542,15 @@ function App() {
               </table>
             </div>
             <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={employees} specialNotes={specialNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} onSelect={handleToggleStaff} />
+            <FocusPlaceSelectionModal 
+              isOpen={focusModalState.isOpen} 
+              onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} 
+              slot={focusModalState.slot} 
+              duty={focusModalState.duty} 
+              focusPlaces={settings.focusPlaces || []} 
+              selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} 
+              onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} 
+            />
           </div>
         )}
 
