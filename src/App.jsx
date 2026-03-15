@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2 } from 'lucide-react';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, GripVertical } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability, rotateStandbyGroups } from './utils/rotation';
 import './App.css';
 
@@ -427,15 +427,51 @@ function App() {
     }
   };
 
-  // 사고자 명단 필터링 (병가, 휴가, 기타 또는 종일 등록된 직원)
-  const casualties = specialNotes.filter(n => ['병가', '휴가'].includes(n.type) || n.isAllDay);
+  const [draggedIdx, setDraggedIdx] = useState(null);
+
+  const handleDragStart = (idx) => setDraggedIdx(idx);
+  const handleDragOver = (e) => e.preventDefault();
+
+  const handleDrop = (targetIdx, list, setList) => {
+    if (draggedIdx === null || draggedIdx === targetIdx) return;
+    const newList = [...list];
+    const draggedItem = newList.splice(draggedIdx, 1)[0];
+    newList.splice(targetIdx, 0, draggedItem);
+    setList(newList);
+    setDraggedIdx(null);
+  };
+
+  const handleSettingsDrop = (targetIdx, key) => {
+    if (draggedIdx === null || draggedIdx === targetIdx) return;
+    const newList = [...settings[key]];
+    const draggedItem = newList.splice(draggedIdx, 1)[0];
+    newList.splice(targetIdx, 0, draggedItem);
+    setSettings({ ...settings, [key]: newList });
+    setDraggedIdx(null);
+  };
+
+  const sortByRank = () => {
+    if (window.confirm('모든 직원을 계급순으로 정렬하시겠습니까? (수동 조정된 순서가 초기화됩니다)')) {
+      const sorted = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+      setEmployees(sorted);
+    }
+  };
+
+  // 사고자 명단 필터링 및 정렬 (전체 직원 순서 기준)
+  const casualties = specialNotes
+    .filter(n => ['병가', '휴가'].includes(n.type) || n.isAllDay)
+    .sort((a, b) => {
+      const idxA = employees.findIndex(e => e.id === a.employeeId);
+      const idxB = employees.findIndex(e => e.id === b.employeeId);
+      return idxA - idxB;
+    });
   const casualtyEmployeeIds = new Set(casualties.map(n => n.employeeId));
 
   const currentTeamEmployees = employees
-    .filter(e => e.team === currentRoster.metadata.teamName && !casualtyEmployeeIds.has(e.id))
-    .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+    .filter(e => e.team === currentRoster.metadata.teamName && !casualtyEmployeeIds.has(e.id));
 
-  const sortedAllEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  const sortedAllEmployees = [...employees];
+
 
   return (
     <div className="app-container">
@@ -495,7 +531,9 @@ function App() {
                   </thead>
                   <tbody>
                     {(() => {
-                      const volEmps = (currentRoster.volunteerIds || []).map(id => employees.find(e => e.id === id)).filter(Boolean);
+                      const volEmps = (currentRoster.volunteerIds || []).map(id => employees.find(e => e.id === id))
+                        .filter(Boolean)
+                        .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
                       const maxLen = Math.max(1, currentTeamEmployees.length, casualties.length, volEmps.length);
                       return Array.from({ length: maxLen }).map((_, i) => {
                         const emp = currentTeamEmployees[i];
@@ -537,7 +575,7 @@ function App() {
                           const ids = currentRoster.assignments[key] || [];
                           const staff = ids.map(id => employees.find(e => e.id === id))
                             .filter(Boolean)
-                            .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+                            .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
                           return (
                             <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty })}>
                               <div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div>
@@ -610,22 +648,25 @@ function App() {
                 
               return (
                 <>
-                  <div className="stats-summary no-print">
-                    <div className="stat-item total">
-                      <span className="stat-label">{employeeTabTeam === '전체' ? '전체' : employeeTabTeam} 인원</span>
-                      <span className="stat-value">{filteredEmployees.length}명</span>
+                  <div className="stats-summary no-print" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                      <div className="stat-item total">
+                        <span className="stat-label">{employeeTabTeam === '전체' ? '전체' : employeeTabTeam} 인원</span>
+                        <span className="stat-value">{filteredEmployees.length}명</span>
+                      </div>
+                      <div className="stat-divider"></div>
+                      {RANKS.map(rank => {
+                        const count = filteredEmployees.filter(e => e.rank === rank).length;
+                        if (count === 0) return null;
+                        return (
+                          <div key={rank} className="stat-item">
+                            <span className="stat-label">{rank}</span>
+                            <span className="stat-value">{count}명</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="stat-divider"></div>
-                    {RANKS.map(rank => {
-                      const count = filteredEmployees.filter(e => e.rank === rank).length;
-                      if (count === 0) return null;
-                      return (
-                        <div key={rank} className="stat-item">
-                          <span className="stat-label">{rank}</span>
-                          <span className="stat-value">{count}명</span>
-                        </div>
-                      );
-                    })}
+                    <button className="btn-outline-small" onClick={sortByRank} title="전체 명단을 계급순으로 일괄 정렬합니다.">계급순 정렬</button>
                   </div>
 
                   <div className="note-form no-print">
@@ -637,16 +678,24 @@ function App() {
                     <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
                   </div>
                   <table className="admin-table interactive">
-                    <thead><tr><th>계급</th><th>성명</th><th>팀</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
+                    <thead><tr><th width="40"></th><th>계급</th><th>성명</th><th>팀</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
                     <tbody>
-                      {filteredEmployees.map(emp => (
-                        <tr key={emp.id} onClick={() => handleRowClick(emp)}>
-                          <td>{emp.rank}</td>
-                          <td className="emp-name-cell">{emp.name}</td>
-                          <td>{emp.team}</td>
-                          <td>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
-                          <td>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
-                          <td>{emp.fixedNightStandbySlot || '-'}</td>
+                      {filteredEmployees.map((emp, idx) => (
+                        <tr 
+                          key={emp.id} 
+                          draggable 
+                          onDragStart={() => handleDragStart(employees.findIndex(e => e.id === emp.id))}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(employees.findIndex(e => e.id === emp.id), employees, setEmployees)}
+                          className={draggedIdx === employees.findIndex(e => e.id === emp.id) ? 'dragging' : ''}
+                        >
+                          <td className="drag-handle"><GripVertical size={16} /></td>
+                          <td onClick={() => handleRowClick(emp)}>{emp.rank}</td>
+                          <td onClick={() => handleRowClick(emp)} className="emp-name-cell">{emp.name}</td>
+                          <td onClick={() => handleRowClick(emp)}>{emp.team}</td>
+                          <td onClick={() => handleRowClick(emp)}>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
+                          <td onClick={() => handleRowClick(emp)}>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
+                          <td onClick={() => handleRowClick(emp)}>{emp.fixedNightStandbySlot || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -883,7 +932,14 @@ function App() {
                   </div>
                   <div className="duty-type-list">
                     {settings.dutyTypes.map((type, idx) => (
-                      <div key={idx} className="duty-type-item">
+                      <div 
+                        key={idx} 
+                        className={`duty-type-item ${draggedIdx === idx ? 'dragging' : ''}`}
+                        draggable={editingDutyIdx === null}
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleSettingsDrop(idx, 'dutyTypes')}
+                      >
                         {editingDutyIdx === idx ? (
                           <div className="edit-inline-form">
                             <input 
@@ -897,7 +953,7 @@ function App() {
                                 if (!editingDutyValue) return;
                                 const newTypes = [...settings.dutyTypes];
                                 newTypes[idx] = editingDutyValue;
-                                setSettings({ ...settings, dutyTypes: newTypes });
+                                setSettings({...settings, dutyTypes: newTypes});
                                 setEditingDutyIdx(null);
                               }}><Save size={14} /></button>
                               <button className="btn-cancel" onClick={() => setEditingDutyIdx(null)}><X size={14} /></button>
@@ -905,7 +961,10 @@ function App() {
                           </div>
                         ) : (
                           <>
-                            <span>{type}</span>
+                            <div className="item-content">
+                              <div className="drag-handle"><GripVertical size={14} /></div>
+                              <span>{type}</span>
+                            </div>
                             <div className="action-btns">
                               <button className="edit-btn" onClick={() => {
                                 setEditingDutyIdx(idx);
@@ -913,7 +972,7 @@ function App() {
                               }}><Edit2 size={14} /></button>
                               <button className="delete-btn" onClick={() => {
                                 if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
-                                  setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx) });
+                                  setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
                                 }
                               }}><Trash size={14} /></button>
                             </div>
@@ -922,6 +981,7 @@ function App() {
                       </div>
                     ))}
                   </div>
+
                 </div>
               </div>
             </div>
