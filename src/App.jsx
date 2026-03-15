@@ -31,8 +31,18 @@ const NIGHT_TIME_SLOTS = [
 ];
 
 const DEFAULT_DUTY_TYPES = [
-  "상황근무", "서부 순21호", "순21호 중점", "서부 순23호", "순23호 중점",
-  "서부 순24호", "순24호 중점", "서부 순25호", "순25호 중점", "도보", "대기근무"
+  { name: "상황근무", shift: "공통" },
+  { name: "서부 순21호", shift: "공통" },
+  { name: "순21호 중점", shift: "공통" },
+  { name: "서부 순23호", shift: "공통" },
+  { name: "순23호 중점", shift: "공통" },
+  { name: "서부 순24호", shift: "공통" },
+  { name: "순24호 중점", shift: "공통" },
+  { name: "서부 순25호", shift: "공통" },
+  { name: "순25호 중점", shift: "공통" },
+  { name: "도보", shift: "공통" },
+  { name: "대기근무", shift: "공통" },
+  { name: "관리반", shift: "주간" }
 ];
 
 const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육", "외근", "기타"];
@@ -74,17 +84,18 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
             const isSelected = selectedIds.includes(emp.id);
             
             // 동일 시간대 다른 근무 배치 확인
-            let otherDuty = null;
+            let otherDutyName = null;
             if (currentAssignments) {
-              otherDuty = dutyTypes.find(d => {
-                if (d === duty) return false;
-                const key = `${slot}_${d}`;
+              const otherDuty = dutyTypes.find(d => {
+                if (d.name === duty) return false;
+                const key = `${slot}_${d.name}`;
                 return (currentAssignments[key] || []).includes(emp.id);
               });
+              if (otherDuty) otherDutyName = otherDuty.name;
             }
 
-            const isBlocked = !availability.available || (otherDuty && !isSelected);
-            const blockReason = !availability.available ? availability.reason : (otherDuty ? `${otherDuty} 배치됨` : '');
+            const isBlocked = !availability.available || (otherDutyName && !isSelected);
+            const blockReason = !availability.available ? availability.reason : (otherDutyName ? `${otherDutyName} 배치됨` : '');
             
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
             
@@ -103,9 +114,9 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
                   </div>
                 )}
                 {/* 중복 근무 정보 표시 (다른 근무 배치 시) */}
-                {otherDuty && !note && (
+                {otherDutyName && !note && (
                   <div className="staff-note-label warning">
-                    {otherDuty}
+                    {otherDutyName}
                   </div>
                 )}
               </div>
@@ -280,6 +291,15 @@ function App() {
     };
     if (!saved) return defaults;
     const parsed = JSON.parse(saved);
+    
+    // Migrating dutyTypes from strings to objects if needed
+    if (parsed.dutyTypes && typeof parsed.dutyTypes[0] === 'string') {
+      parsed.dutyTypes = parsed.dutyTypes.map(name => ({
+        name,
+        shift: name === "관리반" ? "주간" : "공통"
+      }));
+    }
+    
     return { ...defaults, ...parsed };
   });
 
@@ -314,10 +334,12 @@ function App() {
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
+  const [newDutyShift, setNewDutyShift] = useState('공통');
   const [newTeamName, setNewTeamName] = useState('');
   const [newFocusPlace, setNewFocusPlace] = useState('');
   const [editingDutyIdx, setEditingDutyIdx] = useState(null);
   const [editingDutyValue, setEditingDutyValue] = useState('');
+  const [editingDutyShift, setEditingDutyShift] = useState('공통');
   const [isEditingStation, setIsEditingStation] = useState(false);
   const [tempStationSettings, setTempStationSettings] = useState({ stationName: settings.stationName, chiefName: settings.chiefName });
   const [editingTeamIdx, setEditingTeamIdx] = useState(null);
@@ -387,13 +409,13 @@ function App() {
 
       // 새로 선택 시 중복 근무 체크
       const duplicateDuty = settings.dutyTypes.find(d => {
-        if (d === modalState.duty) return false;
-        const otherKey = `${modalState.slot}_${d}`;
+        if (d.name === modalState.duty) return false;
+        const otherKey = `${modalState.slot}_${d.name}`;
         return (prev.assignments[otherKey] || []).includes(id);
       });
 
       if (duplicateDuty) {
-        alert(`${employee.rank} ${employee.name}님은 현재 동일한 시간대에 [${duplicateDuty}] 근무에 이미 배치되어 있습니다.`);
+        alert(`${employee.rank} ${employee.name}님은 현재 동일한 시간대에 [${duplicateDuty.name}] 근무에 이미 배치되어 있습니다.`);
         return prev;
       }
 
@@ -476,8 +498,9 @@ function App() {
 
   const addDutyType = () => {
     if (!newDutyType) return;
-    setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
+    setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, { name: newDutyType, shift: newDutyShift }] });
     setNewDutyType('');
+    setNewDutyShift('공통');
   };
 
   const handleRowClick = (emp) => {
@@ -649,35 +672,38 @@ function App() {
               <table className="roster-table real">
                 <thead><tr><th width="80">구분</th>{currentTimeSlots.map(s => <th key={s} className="time-header">{s}</th>)}</tr></thead>
                 <tbody>
-                  {settings.dutyTypes.map(duty => {
-                    const isFocus = duty.includes('중점');
-                    return (
-                      <tr key={duty} className={isFocus ? 'focus-row' : ''}>
-                        <td className="duty-label">{duty}</td>
-                        {currentTimeSlots.map(slot => {
-                          const key = `${slot}_${duty}`;
-                          if (isFocus) return (
-                            <td 
-                              key={slot} 
-                              className="focus-cell assignment-cell" 
-                              onClick={() => setFocusModalState({ isOpen: true, slot, duty })}
-                            >
-                              <div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div>
-                            </td>
-                          );
-                          const ids = currentRoster.assignments[key] || [];
-                          const staff = ids.map(id => employees.find(e => e.id === id))
-                            .filter(Boolean)
-                            .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
-                          return (
-                            <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty })}>
-                              <div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+                  {settings.dutyTypes
+                    .filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)
+                    .map(dutyObj => {
+                      const duty = dutyObj.name;
+                      const isFocus = duty.includes('중점');
+                      return (
+                        <tr key={duty} className={isFocus ? 'focus-row' : ''}>
+                          <td className="duty-label">{duty}</td>
+                          {currentTimeSlots.map(slot => {
+                            const key = `${slot}_${duty}`;
+                            if (isFocus) return (
+                              <td 
+                                key={slot} 
+                                className="focus-cell assignment-cell" 
+                                onClick={() => setFocusModalState({ isOpen: true, slot, duty })}
+                              >
+                                <div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div>
+                              </td>
+                            );
+                            const ids = currentRoster.assignments[key] || [];
+                            const staff = ids.map(id => employees.find(e => e.id === id))
+                              .filter(Boolean)
+                              .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
+                            return (
+                              <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty })}>
+                                <div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   <tr className="shift-change-row">
                     <td className="duty-label">근무교대</td>
                     {currentTimeSlots.map((s, i) => <td key={s} className="center">{(i === 0 || i === currentTimeSlots.length - 1) && <div className="shift-mark">O</div>}</td>)}
@@ -694,7 +720,7 @@ function App() {
               specialNotes={specialNotes} 
               selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} 
               currentAssignments={currentRoster.assignments}
-              dutyTypes={settings.dutyTypes}
+              dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
               onSelect={handleToggleStaff} 
             />
             <FocusPlaceSelectionModal 
@@ -715,7 +741,7 @@ function App() {
               specialNotes={specialNotes} 
               selectedIds={currentRoster.volunteerIds || []} 
               currentAssignments={currentRoster.assignments}
-              dutyTypes={settings.dutyTypes}
+              dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
               onSelect={(id) => {
                 setCurrentRoster(prev => {
                   const currentVolunteers = prev.volunteerIds || [];
@@ -1071,10 +1097,15 @@ function App() {
                       onChange={e => setNewDutyType(e.target.value)} 
                       onKeyDown={e => e.key === 'Enter' && addDutyType()}
                     />
+                    <select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}>
+                      <option value="공통">공통</option>
+                      <option value="주간">주간 전용</option>
+                      <option value="야간">야간 전용</option>
+                    </select>
                     <button className="btn-primary" onClick={addDutyType}>추가</button>
                   </div>
                   <div className="duty-type-list">
-                    {settings.dutyTypes.map((type, idx) => (
+                    {settings.dutyTypes.map((dutyObj, idx) => (
                       <div 
                         key={idx} 
                         className={`duty-type-item ${draggedIdx === idx ? 'dragging' : ''}`}
@@ -1091,11 +1122,16 @@ function App() {
                               onChange={e => setEditingDutyValue(e.target.value)}
                               autoFocus
                             />
+                            <select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}>
+                              <option value="공통">공통</option>
+                              <option value="주간">주간 전용</option>
+                              <option value="야간">야간 전용</option>
+                            </select>
                             <div className="action-btns">
                               <button className="btn-save" onClick={() => {
                                 if (!editingDutyValue) return;
                                 const newTypes = [...settings.dutyTypes];
-                                newTypes[idx] = editingDutyValue;
+                                newTypes[idx] = { name: editingDutyValue, shift: editingDutyShift };
                                 setSettings({...settings, dutyTypes: newTypes});
                                 setEditingDutyIdx(null);
                               }}><Save size={14} /></button>
@@ -1106,15 +1142,17 @@ function App() {
                           <>
                             <div className="item-content">
                               <div className="drag-handle"><GripVertical size={14} /></div>
-                              <span>{type}</span>
+                              <span className="duty-name">{dutyObj.name}</span>
+                              <span className={`duty-shift-tag ${dutyObj.shift}`}>{dutyObj.shift}</span>
                             </div>
                             <div className="action-btns">
                               <button className="edit-btn" onClick={() => {
                                 setEditingDutyIdx(idx);
-                                setEditingDutyValue(type);
+                                setEditingDutyValue(dutyObj.name);
+                                setEditingDutyShift(dutyObj.shift || '공통');
                               }}><Edit2 size={14} /></button>
                               <button className="delete-btn" onClick={() => {
-                                if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
+                                if (window.confirm(`'${dutyObj.name}' 항목을 삭제하시겠습니까?`)) {
                                   setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
                                 }
                               }}><Trash size={14} /></button>
@@ -1124,9 +1162,9 @@ function App() {
                       </div>
                     ))}
                   </div>
-
                 </div>
               </div>
+
             </div>
           </div>
         )}

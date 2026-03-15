@@ -798,6 +798,23 @@ tr.dragging {
   font-size: 1rem;
 }
 
+.duty-type-item .duty-name {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.duty-shift-tag {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #f0f0f0;
+  color: #666;
+}
+
+.duty-shift-tag.주간 { background: #fff9c4; color: #f57f17; }
+.duty-shift-tag.야간 { background: #e8eaf6; color: #1a237e; }
+.duty-shift-tag.공통 { background: #e0e0e0; color: #424242; }
+
 .duty-type-item .action-btns {
   display: flex;
   gap: 0.25rem;
