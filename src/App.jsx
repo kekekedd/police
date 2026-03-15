@@ -380,7 +380,7 @@ function App() {
                     <tr className="sub-header"><th>조별</th><th>계급</th><th>성명</th><th>계급</th><th>성명</th><th>사유</th></tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: 14 }).map((_, i) => {
+                    {Array.from({ length: Math.max(14, currentTeamEmployees.length, casualties.length) }).map((_, i) => {
                       const emp = currentTeamEmployees[i];
                       const casualty = casualties[i];
                       const cEmp = casualty ? employees.find(e => e.id === casualty.employeeId) : null;
