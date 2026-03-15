@@ -431,6 +431,42 @@ main {
 .note-tag.육아시간 { background: #fff176; color: #827717; }
 .note-tag.지원근무 { background: #bbdefb; color: #0d47a1; }
 .note-tag.휴가, .note-tag.병가 { background: #ffcdd2; color: #b71c1c; }
+.note-tag.교육 { background: #e1bee7; color: #4a148c; }
+.note-tag.외근 { background: #c8e6c9; color: #1b5e20; }
+.note-tag.기타 { background: #e0e0e0; color: #424242; }
+
+.note-form {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  align-items: center;
+  flex-wrap: wrap;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.note-form select, .note-form input:not([type="checkbox"]) {
+  padding: 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.note-form .checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.disabled-input {
+  background-color: #f5f5f5 !important;
+  color: #999 !important;
+  cursor: not-allowed;
+}
 
 @media print {
   .no-print { display: none !important; }

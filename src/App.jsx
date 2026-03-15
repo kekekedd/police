@@ -317,14 +317,15 @@ function App() {
     }
   };
 
+  // 사고자 명단 필터링 (병가, 휴가, 기타 또는 종일 등록된 직원)
+  const casualties = specialNotes.filter(n => ['병가', '휴가'].includes(n.type) || n.isAllDay);
+  const casualtyEmployeeIds = new Set(casualties.map(n => n.employeeId));
+
   const currentTeamEmployees = employees
-    .filter(e => e.team === currentRoster.metadata.teamName)
+    .filter(e => e.team === currentRoster.metadata.teamName && !casualtyEmployeeIds.has(e.id))
     .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
 
   const sortedAllEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
-
-  // 사고자 명단 필터링 (병가, 휴가, 기타 등록된 직원)
-  const casualties = specialNotes.filter(n => ['병가', '휴가', '기타'].includes(n.type));
 
   return (
     <div className="app-container">
@@ -464,9 +465,17 @@ function App() {
             <h2>특이사항 관리</h2>
             <div className="note-form no-print">
               <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{sortedAllEmployees.map(e => <option key={e.id} value={e.id}>{e.rank} {e.name}</option>)}</select>
-              <select value={newNote.type} onChange={e => setNewNote({...newNote, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-              <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} />
-              <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} />
+              <select value={newNote.type} onChange={e => {
+                const type = e.target.value;
+                const isAllDay = ['휴가', '병가'].includes(type);
+                setNewNote({...newNote, type, isAllDay});
+              }}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+              <label className="checkbox-item">
+                <input type="checkbox" checked={newNote.isAllDay} onChange={e => setNewNote({...newNote, isAllDay: e.target.checked})} />
+                종일
+              </label>
+              <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} disabled={newNote.isAllDay} className={newNote.isAllDay ? 'disabled-input' : ''} />
+              <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} disabled={newNote.isAllDay} className={newNote.isAllDay ? 'disabled-input' : ''} />
               <button className="btn-primary" onClick={addNote}>추가</button>
             </div>
             <table className="admin-table">
@@ -476,7 +485,10 @@ function App() {
                   const emp = employees.find(e => e.id === n.employeeId);
                   return (
                     <tr key={n.id}>
-                      <td>{emp?.rank} {emp?.name}</td><td className={`note-tag ${n.type}`}>{n.type}</td><td>{n.startTime} ~ {n.endTime}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
+                      <td>{emp?.rank} {emp?.name}</td>
+                      <td><span className={`note-tag ${n.type}`}>{n.type}</span></td>
+                      <td>{n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`}</td>
+                      <td><button onClick={() => deleteNote(n.id)}>삭제</button></td>
                     </tr>
                   );
                 })}
