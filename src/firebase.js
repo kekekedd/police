@@ -1,6 +1,17 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  updateDoc 
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
@@ -22,3 +33,25 @@ export const db = getFirestore(app);
 
 // Get a reference to the auth service
 export const auth = getAuth(app);
+
+// Firestore helper functions
+export const getDocument = async (coll, id) => {
+  const docRef = doc(db, coll, id);
+  const docSnap = await getDoc(docRef);
+  return docSnap.exists() ? docSnap.data() : null;
+};
+
+export const saveDocument = async (coll, id, data) => {
+  const docRef = doc(db, coll, id);
+  await setDoc(docRef, data, { merge: true });
+};
+
+export const getCollection = async (coll, field, operator, value) => {
+  const q = field ? query(collection(db, coll), where(field, operator, value)) : collection(db, coll);
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const removeDocument = async (coll, id) => {
+  await deleteDoc(doc(db, coll, id));
+};

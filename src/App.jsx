@@ -49,6 +49,16 @@ const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육"
 const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
 const WEATHER_TYPES = ["맑음", "흐림", "비", "눈", "안개", "황사"];
 
+const DEFAULT_SETTINGS = {
+  stationName: '신사지구대',
+  chiefName: '이이식',
+  dutyTypes: DEFAULT_DUTY_TYPES,
+  teams: ['1팀', '2팀', '3팀', '4팀'],
+  focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리'],
+  dayTimeSlots: DAY_TIME_SLOTS,
+  nightTimeSlots: NIGHT_TIME_SLOTS
+};
+
 const formatDateWithDay = (dateStr) => {
   if (!dateStr) return "";
   const days = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
@@ -448,53 +458,23 @@ function VolunteerAddModal({ isOpen, onSave, onClose }) {
 }
 
 function App() {
-  const [employees, setEmployees] = useState(() => {
-    const saved = localStorage.getItem('employees');
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-  });
-
-  const [specialNotes, setSpecialNotes] = useState(() => {
-    const saved = localStorage.getItem('specialNotes');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('appSettings');
-    const defaults = {
-      stationName: '신사지구대',
-      chiefName: '이이식',
-      dutyTypes: DEFAULT_DUTY_TYPES,
-      teams: ['1팀', '2팀', '3팀', '4팀'],
-      focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리'],
-      dayTimeSlots: DAY_TIME_SLOTS,
-      nightTimeSlots: NIGHT_TIME_SLOTS
-    };
-    if (!saved) return defaults;
-    const parsed = JSON.parse(saved);
-    
-    // Migrating dutyTypes from strings to objects if needed
-    if (parsed.dutyTypes && typeof parsed.dutyTypes[0] === 'string') {
-      parsed.dutyTypes = parsed.dutyTypes.map(name => ({
-        name,
-        shift: name === "관리반" ? "주간" : "공통"
-      }));
-    }
-    
-    return { ...defaults, ...parsed };
-  });
+  const [employees, setEmployees] = useState([]);
+  const [specialNotes, setSpecialNotes] = useState([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [currentRoster, setCurrentRoster] = useState({
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
     metadata: { 
-      chief: settings.chiefName, 
+      chief: DEFAULT_SETTINGS.chiefName, 
       teamLeader: '황광철', 
       teamName: '2팀',
-      totalCount: 58,
-      teamCounts: { '1팀': 11, '2팀': 11, '3팀': 13, '4팀': 13 },
+      totalCount: 0,
+      teamCounts: { '1팀': 0, '2팀': 0, '3팀': 0, '4팀': 0 },
       adminCount: 2,
-      longTermAbsent: 7
+      longTermAbsent: 0
     },
     assignments: {},
     focusAreas: {},
@@ -502,82 +482,90 @@ function App() {
   });
 
   const [activeTab, setActiveTab] = useState('roster');
-  const [employeeTabTeam, setEmployeeTabTeam] = useState(() => {
-    const saved = localStorage.getItem('appSettings');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.teams && parsed.teams.length > 0) return parsed.teams[0];
-    }
-    return '1팀';
-  });
+  const [employeeTabTeam, setEmployeeTabTeam] = useState('1팀');
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
-  const [newNote, setNewNote] = useState({ date: new Date().toISOString().split('T')[0], employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
-  const [newDutyType, setNewDutyType] = useState('');
-  const [newDutyShift, setNewDutyShift] = useState('공통');
-  const [newDayTimeSlot, setNewDayTimeSlot] = useState('');
-  const [newNightTimeSlot, setNewNightTimeSlot] = useState('');
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newFocusPlace, setNewFocusPlace] = useState('');
-  const [editingDutyIdx, setEditingDutyIdx] = useState(null);
-  const [editingDutyValue, setEditingDutyValue] = useState('');
-  const [editingDutyShift, setEditingDutyShift] = useState('공통');
-  const [editingDayTimeIdx, setEditingDayTimeIdx] = useState(null);
-  const [editingDayTimeValue, setEditingDayTimeValue] = useState('');
-  const [editingNightTimeIdx, setEditingNightTimeIdx] = useState(null);
-  const [editingNightTimeValue, setEditingNightTimeValue] = useState('');
-  const [isEditingStation, setIsEditingStation] = useState(false);
-  const [tempStationSettings, setTempStationSettings] = useState({ stationName: settings.stationName, chiefName: settings.chiefName });
-  const [editingTeamIdx, setEditingTeamIdx] = useState(null);
-  const [editingTeamValue, setEditingTeamValue] = useState('');
-  const [editingFocusIdx, setEditingFocusIdx] = useState(null);
-  const [editingFocusValue, setEditingFocusValue] = useState('');
-  const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
-  const [focusModalState, setFocusModalState] = useState({ isOpen: false, slot: '', duty: '' });
-  const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState(null);
+  
+  // (기타 상태들...)
 
+  // Firestore 데이터 로드
   useEffect(() => {
-    localStorage.setItem('employees', JSON.stringify(employees));
-    localStorage.setItem('specialNotes', JSON.stringify(specialNotes));
-    localStorage.setItem('appSettings', JSON.stringify(settings));
-  }, [employees, specialNotes, settings]);
+    const user = auth.currentUser;
+    if (!user) return;
 
-  // 날짜/교대 변경 시 저장된 데이터 불러오기
-  useEffect(() => {
-    const rosters = JSON.parse(localStorage.getItem('rosters') || '[]');
-    const saved = rosters.find(r => r.date === currentRoster.date && r.shiftType === currentRoster.shiftType);
-    
-    if (saved) {
-      setCurrentRoster({
-        ...saved,
-        volunteerStaff: saved.volunteerStaff || []
-      });
-    } else {
-      const initialAssignments = {};
-      // 야간 근무인 경우 고정 대기자 자동 배치
-      if (currentRoster.shiftType === '야간') {
-        employees.forEach(emp => {
-          if (emp.team === currentRoster.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
-            const [s, e] = emp.fixedNightStandbySlot.split('-');
-            const notesForDate = specialNotes.filter(n => n.date === currentRoster.date);
-            if (checkAvailability(emp, s, e, notesForDate).available) {
-              const key = `${emp.fixedNightStandbySlot}_대기근무`;
-              initialAssignments[key] = [...(initialAssignments[key] || []), emp.id];
-            }
-          }
-        });
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const savedSettings = await getDocument('settings', user.uid);
+        if (savedSettings) setSettings(savedSettings);
+
+        const staffList = await getCollection('employees', 'userId', '==', user.uid);
+        setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
+
+        const notesList = await getCollection('specialNotes', 'userId', '==', user.uid);
+        setSpecialNotes(notesList);
+
+        if (savedSettings?.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
+      } catch (error) {
+        console.error("Error loading data:", error);
+      } finally {
+        setIsLoading(false);
       }
+    };
 
-      setCurrentRoster(prev => ({
-        ...prev,
-        weather: '맑음',
-        assignments: initialAssignments,
-        focusAreas: {},
-        volunteerStaff: []
-      }));
+    fetchData();
+  }, []);
+
+  // 날짜/교대 변경 시 저장된 근무표 불러오기
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || isLoading) return;
+
+    const fetchRoster = async () => {
+      const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
+      const saved = await getDocument('rosters', rosterId);
+      
+      if (saved) {
+        setCurrentRoster(prev => ({
+          ...prev,
+          ...saved,
+          volunteerStaff: saved.volunteerStaff || []
+        }));
+      } else {
+        const initialAssignments = {};
+        if (currentRoster.shiftType === '야간') {
+          employees.forEach(emp => {
+            if (emp.team === currentRoster.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
+              const [s, e] = emp.fixedNightStandbySlot.split('-');
+              const notesForDate = specialNotes.filter(n => n.date === currentRoster.date);
+              if (checkAvailability(emp, s, e, notesForDate).available) {
+                const key = `${emp.fixedNightStandbySlot}_대기근무`;
+                initialAssignments[key] = [...(initialAssignments[key] || []), emp.id];
+              }
+            }
+          });
+        }
+
+        setCurrentRoster(prev => ({
+          ...prev,
+          weather: '맑음',
+          assignments: initialAssignments,
+          focusAreas: {},
+          volunteerStaff: []
+        }));
+      }
+    };
+
+    fetchRoster();
+  }, [currentRoster.date, currentRoster.shiftType, isLoading]);
+
+  // 설정 자동 저장
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user && !isLoading) {
+      saveDocument('settings', user.uid, settings);
     }
-  }, [currentRoster.date, currentRoster.shiftType]);
+  }, [settings, isLoading]);
 
   const currentTimeSlots = currentRoster.shiftType === '주간' 
     ? (settings.dayTimeSlots || DAY_TIME_SLOTS) 
