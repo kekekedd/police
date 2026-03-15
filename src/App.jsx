@@ -87,7 +87,7 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
   );
 }
 
-function EmployeeEditModal({ isOpen, employee, onSave, onDelete, onClose }) {
+function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClose }) {
   const [edited, setEdited] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -135,6 +135,12 @@ function EmployeeEditModal({ isOpen, employee, onSave, onDelete, onClose }) {
           <div className="input-group">
             <label>성명</label>
             <input type="text" value={edited.name} onChange={e => setEdited({ ...edited, name: e.target.value })} />
+          </div>
+          <div className="input-group">
+            <label>팀</label>
+            <select value={edited.team} onChange={e => setEdited({ ...edited, team: e.target.value })}>
+              {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div className="checkbox-list">
             <label className="checkbox-item">
@@ -192,11 +198,15 @@ function App() {
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('appSettings');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       stationName: '신사지구대',
       chiefName: '이이식',
-      dutyTypes: DEFAULT_DUTY_TYPES
+      dutyTypes: DEFAULT_DUTY_TYPES,
+      teams: ['1팀', '2팀', '3팀', '4팀']
     };
+    if (!saved) return defaults;
+    const parsed = JSON.parse(saved);
+    return { ...defaults, ...parsed };
   });
 
   const [currentRoster, setCurrentRoster] = useState({
@@ -217,11 +227,17 @@ function App() {
   });
 
   const [activeTab, setActiveTab] = useState('roster');
+  const [employeeTabTeam, setEmployeeTabTeam] = useState('전체');
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
-  const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '' });
+  const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
   const [editingDutyIdx, setEditingDutyIdx] = useState(null);
   const [editingDutyValue, setEditingDutyValue] = useState('');
+  const [isEditingStation, setIsEditingStation] = useState(false);
+  const [tempStationSettings, setTempStationSettings] = useState({ stationName: settings.stationName, chiefName: settings.chiefName });
+  const [editingTeamIdx, setEditingTeamIdx] = useState(null);
+  const [editingTeamValue, setEditingTeamValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [editingEmployee, setEditingEmployee] = useState(null);
 
@@ -307,8 +323,8 @@ function App() {
 
   const addEmployee = () => {
     if (!newEmployee.name) return alert('성명을 입력하세요.');
-    setEmployees([...employees, { id: Date.now().toString(), ...newEmployee, team: currentRoster.metadata.teamName, isStandbyRotationEligible: true, isFixedNightStandby: false }]);
-    setNewEmployee({ rank: '경위', name: '' });
+    setEmployees([...employees, { id: Date.now().toString(), ...newEmployee, isStandbyRotationEligible: true, isFixedNightStandby: false }]);
+    setNewEmployee({ ...newEmployee, name: '' });
   };
 
   const handleRowClick = (emp) => {
@@ -450,46 +466,74 @@ function App() {
           <div className="admin-section">
             <h2>직원 명단 관리 (이름을 눌러 수정)</h2>
             
-            <div className="stats-summary no-print">
-              <div className="stat-item total">
-                <span className="stat-label">전체 인원</span>
-                <span className="stat-value">{employees.length}명</span>
-              </div>
-              <div className="stat-divider"></div>
-              {RANKS.map(rank => {
-                const count = employees.filter(e => e.rank === rank).length;
-                if (count === 0) return null;
-                return (
-                  <div key={rank} className="stat-item">
-                    <span className="stat-label">{rank}</span>
-                    <span className="stat-value">{count}명</span>
-                  </div>
-                );
-              })}
+            <div className="team-filter-tabs no-print">
+              {['전체', ...settings.teams].map(team => (
+                <button 
+                  key={team} 
+                  className={`team-tab-btn ${employeeTabTeam === team ? 'active' : ''}`} 
+                  onClick={() => setEmployeeTabTeam(team)}
+                >
+                  {team}
+                </button>
+              ))}
             </div>
 
-            <div className="note-form no-print">
-              <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-              <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>
-              <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
-            </div>
-            <table className="admin-table interactive">
-              <thead><tr><th>계급</th><th>성명</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
-              <tbody>
-                {sortedAllEmployees.map(emp => (
-                  <tr key={emp.id} onClick={() => handleRowClick(emp)}>
-                    <td>{emp.rank}</td>
-                    <td className="emp-name-cell">{emp.name}</td>
-                    <td>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
-                    <td>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
-                    <td>{emp.fixedNightStandbySlot || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {(() => {
+              const filteredEmployees = employeeTabTeam === '전체' 
+                ? sortedAllEmployees 
+                : sortedAllEmployees.filter(e => e.team === employeeTabTeam);
+                
+              return (
+                <>
+                  <div className="stats-summary no-print">
+                    <div className="stat-item total">
+                      <span className="stat-label">{employeeTabTeam === '전체' ? '전체' : employeeTabTeam} 인원</span>
+                      <span className="stat-value">{filteredEmployees.length}명</span>
+                    </div>
+                    <div className="stat-divider"></div>
+                    {RANKS.map(rank => {
+                      const count = filteredEmployees.filter(e => e.rank === rank).length;
+                      if (count === 0) return null;
+                      return (
+                        <div key={rank} className="stat-item">
+                          <span className="stat-label">{rank}</span>
+                          <span className="stat-value">{count}명</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="note-form no-print">
+                    <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                    <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>
+                    <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
+                      {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select></div>
+                    <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
+                  </div>
+                  <table className="admin-table interactive">
+                    <thead><tr><th>계급</th><th>성명</th><th>팀</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
+                    <tbody>
+                      {filteredEmployees.map(emp => (
+                        <tr key={emp.id} onClick={() => handleRowClick(emp)}>
+                          <td>{emp.rank}</td>
+                          <td className="emp-name-cell">{emp.name}</td>
+                          <td>{emp.team}</td>
+                          <td>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
+                          <td>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
+                          <td>{emp.fixedNightStandbySlot || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              );
+            })()}
+            
             <EmployeeEditModal 
               isOpen={!!editingEmployee} 
               employee={editingEmployee} 
+              settings={settings}
               onSave={updateEmployee} 
               onDelete={deleteEmployee} 
               onClose={() => setEditingEmployee(null)} 
@@ -538,26 +582,108 @@ function App() {
             <h2>기본 환경 설정</h2>
             <div className="settings-grid">
               <div className="settings-card">
-                <h3>지구대 정보</h3>
-                <div className="input-group">
-                  <label>지구대 명칭</label>
-                  <input 
-                    type="text" 
-                    value={settings.stationName} 
-                    onChange={e => setSettings({...settings, stationName: e.target.value})} 
-                  />
+                <div className="card-header-with-action">
+                  <h3>지구대 정보</h3>
+                  {!isEditingStation ? (
+                    <button className="edit-btn-small" onClick={() => {
+                      setTempStationSettings({ stationName: settings.stationName, chiefName: settings.chiefName });
+                      setIsEditingStation(true);
+                    }}><Edit2 size={14} /> 수정</button>
+                  ) : (
+                    <div className="action-btns">
+                      <button className="btn-save-small" onClick={() => {
+                        setSettings({ ...settings, ...tempStationSettings });
+                        setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, chief: tempStationSettings.chiefName } }));
+                        setIsEditingStation(false);
+                      }}><Save size={14} /> 저장</button>
+                      <button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button>
+                    </div>
+                  )}
                 </div>
-                <div className="input-group" style={{ marginTop: '1rem' }}>
-                  <label>지구대장 성명</label>
+                <div className="info-display">
+                  <div className="info-item">
+                    <label>지구대 명칭</label>
+                    {isEditingStation ? (
+                      <input 
+                        type="text" 
+                        value={tempStationSettings.stationName} 
+                        onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} 
+                      />
+                    ) : (
+                      <div className="value-text">{settings.stationName}</div>
+                    )}
+                  </div>
+                  <div className="info-item" style={{ marginTop: '1rem' }}>
+                    <label>지구대장 성명</label>
+                    {isEditingStation ? (
+                      <input 
+                        type="text" 
+                        value={tempStationSettings.chiefName} 
+                        onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} 
+                      />
+                    ) : (
+                      <div className="value-text">{settings.chiefName}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-card">
+                <h3>팀(조) 관리</h3>
+                <p className="hint-text">직원 관리에서 사용할 수 있는 팀 목록입니다.</p>
+                <div className="note-form no-print">
                   <input 
                     type="text" 
-                    value={settings.chiefName} 
-                    onChange={e => {
-                      const newChief = e.target.value;
-                      setSettings({...settings, chiefName: newChief});
-                      setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, chief: newChief}}));
-                    }} 
+                    placeholder="새 팀 명칭 (예: 5팀)" 
+                    value={newTeamName} 
+                    onChange={e => setNewTeamName(e.target.value)} 
                   />
+                  <button className="btn-primary" onClick={() => {
+                    if (!newTeamName) return;
+                    setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
+                    setNewTeamName('');
+                  }}>추가</button>
+                </div>
+                <div className="duty-type-list">
+                  {(settings.teams || []).map((team, idx) => (
+                    <div key={idx} className="duty-type-item">
+                      {editingTeamIdx === idx ? (
+                        <div className="edit-inline-form">
+                          <input 
+                            type="text" 
+                            value={editingTeamValue} 
+                            onChange={e => setEditingTeamValue(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="action-btns">
+                            <button className="btn-save" onClick={() => {
+                              if (!editingTeamValue) return;
+                              const newTeams = [...settings.teams];
+                              newTeams[idx] = editingTeamValue;
+                              setSettings({ ...settings, teams: newTeams });
+                              setEditingTeamIdx(null);
+                            }}><Save size={14} /></button>
+                            <button className="btn-cancel" onClick={() => setEditingTeamIdx(null)}><X size={14} /></button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <span>{team}</span>
+                          <div className="action-btns">
+                            <button className="edit-btn" onClick={() => {
+                              setEditingTeamIdx(idx);
+                              setEditingTeamValue(team);
+                            }}><Edit2 size={14} /></button>
+                            <button className="delete-btn" onClick={() => {
+                              if (window.confirm(`'${team}' 항목을 삭제하시겠습니까?`)) {
+                                setSettings({ ...settings, teams: settings.teams.filter((_, i) => i !== idx) });
+                              }
+                            }}><Trash size={14} /></button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -573,7 +699,7 @@ function App() {
                   />
                   <button className="btn-primary" onClick={() => {
                     if (!newDutyType) return;
-                    setSettings({...settings, dutyTypes: [...settings.dutyTypes, newDutyType]});
+                    setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
                     setNewDutyType('');
                   }}>추가</button>
                 </div>
@@ -593,7 +719,7 @@ function App() {
                               if (!editingDutyValue) return;
                               const newTypes = [...settings.dutyTypes];
                               newTypes[idx] = editingDutyValue;
-                              setSettings({...settings, dutyTypes: newTypes});
+                              setSettings({ ...settings, dutyTypes: newTypes });
                               setEditingDutyIdx(null);
                             }}><Save size={14} /></button>
                             <button className="btn-cancel" onClick={() => setEditingDutyIdx(null)}><X size={14} /></button>
@@ -609,7 +735,7 @@ function App() {
                             }}><Edit2 size={14} /></button>
                             <button className="delete-btn" onClick={() => {
                               if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
-                                setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
+                                setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx) });
                               }
                             }}><Trash size={14} /></button>
                           </div>
