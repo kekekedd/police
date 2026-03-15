@@ -530,6 +530,7 @@ function App() {
               </tbody>
             </table>
           </div>
+        )}
         {activeTab === 'settings' && (
           <div className="admin-section">
             <h2>기본 환경 설정</h2>
