@@ -598,168 +598,172 @@ function App() {
           <div className="admin-section">
             <h2>기본 환경 설정</h2>
             <div className="settings-grid">
-              <div className="settings-card">
-                <div className="card-header-with-action">
-                  <h3>지구대 정보</h3>
-                  {!isEditingStation ? (
-                    <button className="edit-btn-small" onClick={() => {
-                      setTempStationSettings({ stationName: settings.stationName, chiefName: settings.chiefName });
-                      setIsEditingStation(true);
-                    }}><Edit2 size={14} /> 수정</button>
-                  ) : (
-                    <div className="action-btns">
-                      <button className="btn-save-small" onClick={() => {
-                        setSettings({ ...settings, ...tempStationSettings });
-                        setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, chief: tempStationSettings.chiefName } }));
-                        setIsEditingStation(false);
-                      }}><Save size={14} /> 저장</button>
-                      <button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button>
-                    </div>
-                  )}
-                </div>
-                <div className="info-display">
-                  <div className="info-item">
-                    <label>지구대 명칭</label>
-                    {isEditingStation ? (
-                      <input 
-                        type="text" 
-                        value={tempStationSettings.stationName} 
-                        onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} 
-                      />
+              <div className="settings-column">
+                <div className="settings-card">
+                  <div className="card-header-with-action">
+                    <h3>지구대 정보</h3>
+                    {!isEditingStation ? (
+                      <button className="edit-btn-small" onClick={() => {
+                        setTempStationSettings({ stationName: settings.stationName, chiefName: settings.chiefName });
+                        setIsEditingStation(true);
+                      }}><Edit2 size={14} /> 수정</button>
                     ) : (
-                      <div className="value-text">{settings.stationName}</div>
+                      <div className="action-btns">
+                        <button className="btn-save-small" onClick={() => {
+                          setSettings({ ...settings, ...tempStationSettings });
+                          setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, chief: tempStationSettings.chiefName } }));
+                          setIsEditingStation(false);
+                        }}><Save size={14} /> 저장</button>
+                        <button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button>
+                      </div>
                     )}
                   </div>
-                  <div className="info-item" style={{ marginTop: '1rem' }}>
-                    <label>지구대장 성명</label>
-                    {isEditingStation ? (
-                      <input 
-                        type="text" 
-                        value={tempStationSettings.chiefName} 
-                        onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} 
-                      />
-                    ) : (
-                      <div className="value-text">{settings.chiefName}</div>
-                    )}
+                  <div className="info-display">
+                    <div className="info-item">
+                      <label>지구대 명칭</label>
+                      {isEditingStation ? (
+                        <input 
+                          type="text" 
+                          value={tempStationSettings.stationName} 
+                          onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} 
+                        />
+                      ) : (
+                        <div className="value-text">{settings.stationName}</div>
+                      )}
+                    </div>
+                    <div className="info-item" style={{ marginTop: '1rem' }}>
+                      <label>지구대장 성명</label>
+                      {isEditingStation ? (
+                        <input 
+                          type="text" 
+                          value={tempStationSettings.chiefName} 
+                          onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} 
+                        />
+                      ) : (
+                        <div className="value-text">{settings.chiefName}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card">
+                  <h3>팀(조) 관리</h3>
+                  <p className="hint-text">직원 관리에서 사용할 수 있는 팀 목록입니다.</p>
+                  <div className="note-form no-print">
+                    <input 
+                      type="text" 
+                      placeholder="새 팀 명칭 (예: 5팀)" 
+                      value={newTeamName} 
+                      onChange={e => setNewTeamName(e.target.value)} 
+                    />
+                    <button className="btn-primary" onClick={() => {
+                      if (!newTeamName) return;
+                      setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
+                      setNewTeamName('');
+                    }}>추가</button>
+                  </div>
+                  <div className="duty-type-list">
+                    {(settings.teams || []).map((team, idx) => (
+                      <div key={idx} className="duty-type-item">
+                        {editingTeamIdx === idx ? (
+                          <div className="edit-inline-form">
+                            <input 
+                              type="text" 
+                              value={editingTeamValue} 
+                              onChange={e => setEditingTeamValue(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="action-btns">
+                              <button className="btn-save" onClick={() => {
+                                if (!editingTeamValue) return;
+                                const newTeams = [...settings.teams];
+                                newTeams[idx] = editingTeamValue;
+                                setSettings({ ...settings, teams: newTeams });
+                                setEditingTeamIdx(null);
+                              }}><Save size={14} /></button>
+                              <button className="btn-cancel" onClick={() => setEditingTeamIdx(null)}><X size={14} /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{team}</span>
+                            <div className="action-btns">
+                              <button className="edit-btn" onClick={() => {
+                                setEditingTeamIdx(idx);
+                                setEditingTeamValue(team);
+                              }}><Edit2 size={14} /></button>
+                              <button className="delete-btn" onClick={() => {
+                                if (window.confirm(`'${team}' 항목을 삭제하시겠습니까?`)) {
+                                  setSettings({ ...settings, teams: settings.teams.filter((_, i) => i !== idx) });
+                                }
+                              }}><Trash size={14} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              <div className="settings-card">
-                <h3>팀(조) 관리</h3>
-                <p className="hint-text">직원 관리에서 사용할 수 있는 팀 목록입니다.</p>
-                <div className="note-form no-print">
-                  <input 
-                    type="text" 
-                    placeholder="새 팀 명칭 (예: 5팀)" 
-                    value={newTeamName} 
-                    onChange={e => setNewTeamName(e.target.value)} 
-                  />
-                  <button className="btn-primary" onClick={() => {
-                    if (!newTeamName) return;
-                    setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
-                    setNewTeamName('');
-                  }}>추가</button>
-                </div>
-                <div className="duty-type-list">
-                  {(settings.teams || []).map((team, idx) => (
-                    <div key={idx} className="duty-type-item">
-                      {editingTeamIdx === idx ? (
-                        <div className="edit-inline-form">
-                          <input 
-                            type="text" 
-                            value={editingTeamValue} 
-                            onChange={e => setEditingTeamValue(e.target.value)}
-                            autoFocus
-                          />
-                          <div className="action-btns">
-                            <button className="btn-save" onClick={() => {
-                              if (!editingTeamValue) return;
-                              const newTeams = [...settings.teams];
-                              newTeams[idx] = editingTeamValue;
-                              setSettings({ ...settings, teams: newTeams });
-                              setEditingTeamIdx(null);
-                            }}><Save size={14} /></button>
-                            <button className="btn-cancel" onClick={() => setEditingTeamIdx(null)}><X size={14} /></button>
+              <div className="settings-column">
+                <div className="settings-card">
+                  <h3>근무 유형(구분) 관리</h3>
+                  <p className="hint-text">근무표의 '구분' 열에 표시될 항목들입니다. ('중점' 포함 시 입력창이 생성됩니다)</p>
+                  <div className="note-form no-print">
+                    <input 
+                      type="text" 
+                      placeholder="새 근무 유형 입력" 
+                      value={newDutyType} 
+                      onChange={e => setNewDutyType(e.target.value)} 
+                    />
+                    <button className="btn-primary" onClick={() => {
+                      if (!newDutyType) return;
+                      setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
+                      setNewDutyType('');
+                    }}>추가</button>
+                  </div>
+                  <div className="duty-type-list">
+                    {settings.dutyTypes.map((type, idx) => (
+                      <div key={idx} className="duty-type-item">
+                        {editingDutyIdx === idx ? (
+                          <div className="edit-inline-form">
+                            <input 
+                              type="text" 
+                              value={editingDutyValue} 
+                              onChange={e => setEditingDutyValue(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="action-btns">
+                              <button className="btn-save" onClick={() => {
+                                if (!editingDutyValue) return;
+                                const newTypes = [...settings.dutyTypes];
+                                newTypes[idx] = editingDutyValue;
+                                setSettings({ ...settings, dutyTypes: newTypes });
+                                setEditingDutyIdx(null);
+                              }}><Save size={14} /></button>
+                              <button className="btn-cancel" onClick={() => setEditingDutyIdx(null)}><X size={14} /></button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <>
-                          <span>{team}</span>
-                          <div className="action-btns">
-                            <button className="edit-btn" onClick={() => {
-                              setEditingTeamIdx(idx);
-                              setEditingTeamValue(team);
-                            }}><Edit2 size={14} /></button>
-                            <button className="delete-btn" onClick={() => {
-                              if (window.confirm(`'${team}' 항목을 삭제하시겠습니까?`)) {
-                                setSettings({ ...settings, teams: settings.teams.filter((_, i) => i !== idx) });
-                              }
-                            }}><Trash size={14} /></button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="settings-card">
-                <h3>근무 유형(구분) 관리</h3>
-                <p className="hint-text">근무표의 '구분' 열에 표시될 항목들입니다. ('중점' 포함 시 입력창이 생성됩니다)</p>
-                <div className="note-form no-print">
-                  <input 
-                    type="text" 
-                    placeholder="새 근무 유형 입력" 
-                    value={newDutyType} 
-                    onChange={e => setNewDutyType(e.target.value)} 
-                  />
-                  <button className="btn-primary" onClick={() => {
-                    if (!newDutyType) return;
-                    setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
-                    setNewDutyType('');
-                  }}>추가</button>
-                </div>
-                <div className="duty-type-list">
-                  {settings.dutyTypes.map((type, idx) => (
-                    <div key={idx} className="duty-type-item">
-                      {editingDutyIdx === idx ? (
-                        <div className="edit-inline-form">
-                          <input 
-                            type="text" 
-                            value={editingDutyValue} 
-                            onChange={e => setEditingDutyValue(e.target.value)}
-                            autoFocus
-                          />
-                          <div className="action-btns">
-                            <button className="btn-save" onClick={() => {
-                              if (!editingDutyValue) return;
-                              const newTypes = [...settings.dutyTypes];
-                              newTypes[idx] = editingDutyValue;
-                              setSettings({ ...settings, dutyTypes: newTypes });
-                              setEditingDutyIdx(null);
-                            }}><Save size={14} /></button>
-                            <button className="btn-cancel" onClick={() => setEditingDutyIdx(null)}><X size={14} /></button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <span>{type}</span>
-                          <div className="action-btns">
-                            <button className="edit-btn" onClick={() => {
-                              setEditingDutyIdx(idx);
-                              setEditingDutyValue(type);
-                            }}><Edit2 size={14} /></button>
-                            <button className="delete-btn" onClick={() => {
-                              if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
-                                setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx) });
-                              }
-                            }}><Trash size={14} /></button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                        ) : (
+                          <>
+                            <span>{type}</span>
+                            <div className="action-btns">
+                              <button className="edit-btn" onClick={() => {
+                                setEditingDutyIdx(idx);
+                                setEditingDutyValue(type);
+                              }}><Edit2 size={14} /></button>
+                              <button className="delete-btn" onClick={() => {
+                                if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
+                                  setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx) });
+                                }
+                              }}><Trash size={14} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
