@@ -83,6 +83,31 @@ main {
   font-weight: bold;
 }
 
+.toggle-buttons {
+  display: flex;
+  background: #eee;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.toggle-buttons button {
+  padding: 0.4rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.toggle-buttons button.active {
+  background: white;
+  color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 .checkbox-list {
   display: flex;
   flex-direction: column;

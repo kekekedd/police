@@ -548,8 +548,20 @@ function App() {
         {activeTab === 'roster' && (
           <div className="roster-view">
             <div className="roster-header-inputs no-print">
-              <div className="input-group"><label><Calendar size={16} /> 일자</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
-              <div className="input-group"><label>구분</label><select value={currentRoster.shiftType} onChange={e => setCurrentRoster({...currentRoster, shiftType: e.target.value})}><option value="주간">주간</option><option value="야간">야간</option></select></div>
+              <div className="input-group"><label><Calendar size={16} /> 날짜</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
+              <div className="input-group">
+                <label>구분</label>
+                <div className="toggle-buttons">
+                  <button 
+                    className={currentRoster.shiftType === '주간' ? 'active' : ''} 
+                    onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}
+                  >주간</button>
+                  <button 
+                    className={currentRoster.shiftType === '야간' ? 'active' : ''} 
+                    onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}
+                  >야간</button>
+                </div>
+              </div>
               <div className="input-group"><label>팀명</label><input type="text" style={{ width: '80px' }} value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
               <div className="input-group"><label>지구대장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
               <div className="input-group"><label>순찰팀장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
