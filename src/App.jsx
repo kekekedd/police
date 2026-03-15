@@ -107,6 +107,12 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
               >
                 <div className="staff-rank">{emp.rank}</div>
                 <div className="staff-name">{emp.name}</div>
+                {/* 자원근무자 표시 */}
+                {emp.isVolunteer && (
+                  <div className="staff-note-label 지원근무">
+                    자원근무
+                  </div>
+                )}
                 {/* 특이사항 표시 (휴가, 육아시간 등) */}
                 {note && (
                   <div className={`staff-note-label ${note.type}`}>
@@ -394,6 +400,54 @@ function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, se
   );
 }
 
+function VolunteerAddModal({ isOpen, onSave, onClose }) {
+  const [rank, setRank] = useState('경위');
+  const [name, setName] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleAdd = () => {
+    if (!name) return alert('성명을 입력하세요.');
+    onSave({ id: `vol_${Date.now()}`, rank, name, isVolunteer: true });
+    setName('');
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content admin-modal">
+        <div className="modal-header">
+          <h3>자원근무자 직접 입력</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="modal-body edit-form">
+          <div className="input-group">
+            <label>계급</label>
+            <select value={rank} onChange={e => setRank(e.target.value)}>
+              {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>성명</label>
+            <input 
+              type="text" 
+              placeholder="자원근무자 성명" 
+              value={name} 
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-outline" onClick={onClose}>취소</button>
+          <button className="btn-primary" onClick={handleAdd}><Plus size={16} /> 추가</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [employees, setEmployees] = useState(() => {
     const saved = localStorage.getItem('employees');
@@ -443,7 +497,7 @@ function App() {
     },
     assignments: {},
     focusAreas: {},
-    volunteerIds: []
+    volunteerStaff: []
   });
 
   const [activeTab, setActiveTab] = useState('roster');
@@ -473,7 +527,7 @@ function App() {
   const [editingFocusValue, setEditingFocusValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [focusModalState, setFocusModalState] = useState({ isOpen: false, slot: '', duty: '' });
-  const [volunteerModalOpen, setVolunteerModalOpen] = useState(false);
+  const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   useEffect(() => {
@@ -490,7 +544,7 @@ function App() {
     if (saved) {
       setCurrentRoster({
         ...saved,
-        volunteerIds: saved.volunteerIds || []
+        volunteerStaff: saved.volunteerStaff || []
       });
     } else {
       const initialAssignments = {};
@@ -512,7 +566,7 @@ function App() {
         weather: '맑음',
         assignments: initialAssignments,
         focusAreas: {},
-        volunteerIds: []
+        volunteerStaff: []
       }));
     }
   }, [currentRoster.date, currentRoster.shiftType]);
@@ -751,7 +805,7 @@ function App() {
               <div className="input-group"><label>지구대장</label><input type="text" className="chief-name-input" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
               <div className="input-group"><label>순찰팀장</label><input type="text" className="leader-name-input" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
               <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'} title="이전 야간 기반으로 대기조 3개조를 자동 생성합니다."><RefreshCw size={16} /> 자동 순번</button>
-              <button className="btn-outline" onClick={() => setVolunteerModalOpen(true)}><Plus size={16} /> 자원근무</button>
+              <button className="btn-outline" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
               <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
               <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
             </div>
@@ -796,9 +850,7 @@ function App() {
                   </thead>
                   <tbody>
                     {(() => {
-                      const volEmps = (currentRoster.volunteerIds || []).map(id => employees.find(e => e.id === id))
-                        .filter(Boolean)
-                        .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
+                      const volEmps = currentRoster.volunteerStaff || [];
                       const maxLen = Math.max(1, currentTeamEmployees.length, casualties.length, volEmps.length);
                       return Array.from({ length: maxLen }).map((_, i) => {
                         const emp = currentTeamEmployees[i];
@@ -841,9 +893,10 @@ function App() {
                               </td>
                             );
                             const ids = currentRoster.assignments[key] || [];
-                            const staff = ids.map(id => employees.find(e => e.id === id))
+                            const allAvailableStaff = [...employees, ...(currentRoster.volunteerStaff || [])];
+                            const staff = ids.map(id => allAvailableStaff.find(e => e.id === id))
                               .filter(Boolean)
-                              .sort((a, b) => employees.indexOf(a) - employees.indexOf(b));
+                              .sort((a, b) => allAvailableStaff.indexOf(a) - allAvailableStaff.indexOf(b));
                             return (
                               <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty })}>
                                 <div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div>
@@ -865,7 +918,7 @@ function App() {
               onClose={() => setModalState({ ...modalState, isOpen: false })} 
               slot={modalState.slot} 
               duty={modalState.duty} 
-              employees={employees} 
+              employees={[...employees, ...(currentRoster.volunteerStaff || [])]} 
               specialNotes={specialNotes} 
               selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} 
               currentAssignments={currentRoster.assignments}
@@ -883,27 +936,15 @@ function App() {
               dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
               onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} 
             />
-            <StaffSelectionModal 
-              isOpen={volunteerModalOpen} 
-              onClose={() => setVolunteerModalOpen(false)} 
-              slot="자원" 
-              duty="근무" 
-              employees={employees} 
-              specialNotes={specialNotes} 
-              selectedIds={currentRoster.volunteerIds || []} 
-              currentAssignments={currentRoster.assignments}
-              dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
-              onSelect={(id) => {
-                setCurrentRoster(prev => {
-                  const currentVolunteers = prev.volunteerIds || [];
-                  const isSelected = currentVolunteers.includes(id);
-                  if (isSelected) {
-                    return { ...prev, volunteerIds: currentVolunteers.filter(i => i !== id) };
-                  } else {
-                    return { ...prev, volunteerIds: [...currentVolunteers, id] };
-                  }
-                });
+            <VolunteerAddModal 
+              isOpen={volunteerAddModalOpen} 
+              onSave={(newVol) => {
+                setCurrentRoster(prev => ({
+                  ...prev,
+                  volunteerStaff: [...(prev.volunteerStaff || []), newVol]
+                }));
               }} 
+              onClose={() => setVolunteerAddModalOpen(false)} 
             />
           </div>
         )}
