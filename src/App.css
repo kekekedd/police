@@ -131,17 +131,18 @@ main {
 .summary-table.real {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   border: 2px solid black;
   table-layout: fixed;
 }
 
 .summary-table.real td {
   border: 1px solid black;
-  padding: 4px;
+  padding: 2px 4px;
   text-align: center;
   font-size: 0.8rem;
   word-break: keep-all;
+  height: 24px;
 }
 
 .summary-table.real .label {
@@ -151,7 +152,7 @@ main {
 
 /* Worker Section */
 .worker-section.real {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .worker-table.real {
@@ -163,13 +164,15 @@ main {
 
 .worker-table.real th, .worker-table.real td {
   border: 1px solid black;
-  padding: 2px;
+  padding: 1px 2px;
   font-size: 0.75rem;
   text-align: center;
+  height: 22px;
 }
 
 .worker-table.real thead th {
   background-color: #f2f2f2;
+  height: 24px;
 }
 
 /* Main Roster Table */
@@ -182,8 +185,8 @@ main {
 
 .roster-table.real th, .roster-table.real td {
   border: 1px solid black;
-  padding: 2px;
-  height: 50px;
+  padding: 1px;
+  height: 38px;
   vertical-align: middle;
   overflow: hidden;
 }
@@ -192,7 +195,7 @@ main {
   background-color: #f2f2f2;
   font-size: 0.7rem;
   height: auto;
-  padding: 4px 2px;
+  padding: 2px 1px;
   word-break: break-all;
 }
 
