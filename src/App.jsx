@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X } from 'lucide-react';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability, rotateStandbyGroups } from './utils/rotation';
 import './App.css';
 
@@ -30,7 +30,7 @@ const NIGHT_TIME_SLOTS = [
   "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"
 ];
 
-const DUTY_TYPES = [
+const DEFAULT_DUTY_TYPES = [
   "상황근무", "서부 순21호", "순21호 중점", "서부 순23호", "순23호 중점",
   "서부 순24호", "순24호 중점", "서부 순25호", "순25호 중점", "도보", "대기근무"
 ];
@@ -190,12 +190,21 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('appSettings');
+    return saved ? JSON.parse(saved) : {
+      stationName: '신사지구대',
+      chiefName: '이이식',
+      dutyTypes: DEFAULT_DUTY_TYPES
+    };
+  });
+
   const [currentRoster, setCurrentRoster] = useState({
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
     metadata: { 
-      chief: '이이식', 
+      chief: settings.chiefName, 
       teamLeader: '황광철', 
       teamName: '2팀',
       totalCount: 58,
@@ -210,13 +219,15 @@ function App() {
   const [activeTab, setActiveTab] = useState('roster');
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '' });
+  const [newDutyType, setNewDutyType] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('employees', JSON.stringify(employees));
     localStorage.setItem('specialNotes', JSON.stringify(specialNotes));
-  }, [employees, specialNotes]);
+    localStorage.setItem('appSettings', JSON.stringify(settings));
+  }, [employees, specialNotes, settings]);
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? DAY_TIME_SLOTS : NIGHT_TIME_SLOTS;
 
@@ -234,7 +245,7 @@ function App() {
       }
 
       // 새로 선택 시 중복 근무 체크
-      const duplicateDuty = DUTY_TYPES.find(d => {
+      const duplicateDuty = settings.dutyTypes.find(d => {
         if (d === modalState.duty) return false;
         const otherKey = `${modalState.slot}_${d}`;
         return (prev.assignments[otherKey] || []).includes(id);
@@ -335,6 +346,7 @@ function App() {
           <button onClick={() => setActiveTab('roster')} className={activeTab === 'roster' ? 'active' : ''}>근무표 작성</button>
           <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
           <button onClick={() => setActiveTab('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
+          <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'active' : ''}><Settings size={16} /> 환경 설정</button>
         </nav>
       </header>
 
@@ -344,14 +356,16 @@ function App() {
             <div className="roster-header-inputs no-print">
               <div className="input-group"><label><Calendar size={16} /> 일자</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
               <div className="input-group"><label>구분</label><select value={currentRoster.shiftType} onChange={e => setCurrentRoster({...currentRoster, shiftType: e.target.value})}><option value="주간">주간</option><option value="야간">야간</option></select></div>
-              <div className="input-group"><label>팀명</label><input type="text" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
+              <div className="input-group"><label>팀명</label><input type="text" style={{ width: '80px' }} value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
+              <div className="input-group"><label>지구대장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
+              <div className="input-group"><label>순찰팀장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
               <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'} title="이전 야간 기반으로 대기조 3개조를 자동 생성합니다."><RefreshCw size={16} /> 자동 순번</button>
               <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
               <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
             </div>
 
             <div className="print-area real-style">
-              <div className="doc-title">신사지구대 근무일지 ({currentRoster.shiftType === '야간' ? '야' : '주'})</div>
+              <div className="doc-title">{settings.stationName} 근무일지 ({currentRoster.shiftType === '야간' ? '야' : '주'})</div>
               <table className="summary-table real">
                 <tbody>
                   <tr>
@@ -398,7 +412,7 @@ function App() {
               <table className="roster-table real">
                 <thead><tr><th width="80">구분</th>{currentTimeSlots.map(s => <th key={s} className="time-header">{s}</th>)}</tr></thead>
                 <tbody>
-                  {DUTY_TYPES.map(duty => {
+                  {settings.dutyTypes.map(duty => {
                     const isFocus = duty.includes('중점');
                     return (
                       <tr key={duty} className={isFocus ? 'focus-row' : ''}>
@@ -407,7 +421,9 @@ function App() {
                           const key = `${slot}_${duty}`;
                           if (isFocus) return <td key={slot} className="focus-cell"><input type="text" className="focus-input" value={currentRoster.focusAreas[key] || ''} onChange={e => handleFocusChange(slot, duty, e.target.value)} /></td>;
                           const ids = currentRoster.assignments[key] || [];
-                          const staff = ids.map(id => employees.find(e => e.id === id)).filter(Boolean);
+                          const staff = ids.map(id => employees.find(e => e.id === id))
+                            .filter(Boolean)
+                            .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
                           return (
                             <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty })}>
                               <div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div>
@@ -513,6 +529,65 @@ function App() {
                 })}
               </tbody>
             </table>
+          </div>
+        {activeTab === 'settings' && (
+          <div className="admin-section">
+            <h2>기본 환경 설정</h2>
+            <div className="settings-grid">
+              <div className="settings-card">
+                <h3>지구대 정보</h3>
+                <div className="input-group">
+                  <label>지구대 명칭</label>
+                  <input 
+                    type="text" 
+                    value={settings.stationName} 
+                    onChange={e => setSettings({...settings, stationName: e.target.value})} 
+                  />
+                </div>
+                <div className="input-group" style={{ marginTop: '1rem' }}>
+                  <label>지구대장 성명</label>
+                  <input 
+                    type="text" 
+                    value={settings.chiefName} 
+                    onChange={e => {
+                      const newChief = e.target.value;
+                      setSettings({...settings, chiefName: newChief});
+                      setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, chief: newChief}}));
+                    }} 
+                  />
+                </div>
+              </div>
+
+              <div className="settings-card">
+                <h3>근무 유형(구분) 관리</h3>
+                <p className="hint-text">근무표의 '구분' 열에 표시될 항목들입니다. ('중점' 포함 시 입력창이 생성됩니다)</p>
+                <div className="note-form no-print">
+                  <input 
+                    type="text" 
+                    placeholder="새 근무 유형 입력" 
+                    value={newDutyType} 
+                    onChange={e => setNewDutyType(e.target.value)} 
+                  />
+                  <button className="btn-primary" onClick={() => {
+                    if (!newDutyType) return;
+                    setSettings({...settings, dutyTypes: [...settings.dutyTypes, newDutyType]});
+                    setNewDutyType('');
+                  }}>추가</button>
+                </div>
+                <div className="duty-type-list">
+                  {settings.dutyTypes.map((type, idx) => (
+                    <div key={idx} className="duty-type-item">
+                      <span>{type}</span>
+                      <button className="delete-btn" onClick={() => {
+                        if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
+                          setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
+                        }
+                      }}><Trash size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
