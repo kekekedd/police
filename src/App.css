@@ -159,12 +159,14 @@ main {
   flex: 1;
 }
 
-/* Print Area (Real Style) */
+/* Print Area (Real Style) - Screen View */
 .print-area.real-style {
-  background: white;
-  padding: 1rem;
-  border: 1px solid #ccc;
-  color: black;
+  background: #ffffff;
+  padding: 2rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  color: #333;
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
@@ -172,99 +174,120 @@ main {
 
 .doc-title {
   text-align: center;
-  font-size: 2rem;
-  font-weight: bold;
-  margin-bottom: 1rem;
-  letter-spacing: 2px;
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  letter-spacing: 4px;
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--primary-color);
+  padding-bottom: 0.5rem;
 }
 
 /* Summary Table */
 .summary-table.real {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 0.5rem;
-  border: 2px solid black;
+  margin-bottom: 1rem;
+  border: 1px solid #d0d0d0;
   table-layout: fixed;
 }
 
 .summary-table.real td {
-  border: 1px solid black;
-  padding: 2px 4px;
+  border: 1px solid #d0d0d0;
+  padding: 6px 8px;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   word-break: keep-all;
-  height: 24px;
+  height: 28px;
 }
 
 .summary-table.real .label {
-  background-color: #f2f2f2;
+  background-color: #f8f9fa;
   font-weight: bold;
+  color: #555;
+}
+
+.summary-table.real .val {
+  font-weight: 500;
 }
 
 /* Worker Section */
 .worker-section.real {
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .worker-table.real {
   width: 100%;
   border-collapse: collapse;
-  border: 2px solid black;
+  border: 1px solid #d0d0d0;
   table-layout: fixed;
 }
 
 .worker-table.real th, .worker-table.real td {
-  border: 1px solid black;
-  padding: 0px 2px;
-  font-size: 0.65rem;
+  border: 1px solid #e0e0e0;
+  padding: 2px 4px;
+  font-size: 0.7rem;
   text-align: center;
-  height: 18px;
+  height: 20px;
+}
+
+.worker-table.real tbody tr:nth-child(even) {
+  background-color: #fbfbfb;
 }
 
 .worker-table.real thead th {
-  background-color: #f2f2f2;
-  height: 20px;
+  background-color: #f1f3f5;
+  height: 24px;
   font-weight: bold;
+  color: #495057;
+  border-bottom: 2px solid #dee2e6;
 }
 
 .worker-table.real .sub-header th {
-  font-size: 0.6rem;
-  height: 16px;
+  font-size: 0.65rem;
+  height: 18px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #d0d0d0;
 }
 
 /* Main Roster Table */
 .roster-table.real {
   width: 100%;
   border-collapse: collapse;
-  border: 2px solid black;
+  border: 1px solid #d0d0d0;
   table-layout: fixed;
 }
 
 .roster-table.real th, .roster-table.real td {
-  border: 1px solid black;
-  padding: 1px;
-  height: 38px;
+  border: 1px solid #e0e0e0;
+  padding: 2px;
+  height: 42px;
   vertical-align: middle;
   overflow: hidden;
 }
 
 .roster-table.real th {
-  background-color: #f2f2f2;
-  font-size: 0.7rem;
+  background-color: #f8f9fa;
+  color: #495057;
+  font-size: 0.75rem;
   height: auto;
-  padding: 2px 1px;
+  padding: 4px 2px;
   word-break: break-all;
+  border-bottom: 2px solid #dee2e6;
 }
 
 .duty-label {
-  background-color: #f9f9f9;
+  background-color: #fdfdfd;
   font-weight: bold;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   text-align: center;
+  color: var(--primary-color);
+  border-right: 2px solid #dee2e6 !important;
 }
 
 .assignment-cell {
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .assignment-cell:hover {
@@ -275,12 +298,38 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
+  padding: 2px;
 }
 
 .staff-name-v {
   font-size: 0.75rem;
   line-height: 1.1;
+  background-color: #e8eaf6;
+  color: #1a237e;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Focus Areas styling */
+.focus-cell {
+  padding: 0 !important;
+  text-align: center;
+}
+
+.focus-cell .staff-name-v {
+  width: 90%;
+  text-align: center;
+  background-color: #ffffff;
+  color: #333;
+  border: 1px solid #ccc;
+  margin: 0 auto;
+}
+
+.focus-row td {
+  background-color: #f5f5f5;
 }
 
 /* Admin Styles */
@@ -970,7 +1019,51 @@ tr.dragging {
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
-  body { background: white; }
-  .print-area.real-style { border: none; padding: 0; }
-  main { padding: 0; margin: 0; }
+  
+  body { 
+    background: white !important; 
+    color: black !important;
+  }
+  
+  .print-area.real-style { 
+    border: none !important; 
+    padding: 0 !important; 
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  
+  main { padding: 0 !important; margin: 0 !important; }
+
+  /* Reset all table colors and borders for printing */
+  .summary-table.real, .worker-table.real, .roster-table.real {
+    border: 2px solid black !important;
+  }
+  
+  .summary-table.real td, .worker-table.real th, .worker-table.real td, .roster-table.real th, .roster-table.real td {
+    border: 1px solid black !important;
+    background-color: transparent !important;
+    color: black !important;
+  }
+  
+  .worker-table.real tbody tr:nth-child(even) {
+    background-color: transparent !important;
+  }
+
+  .staff-name-v {
+    background-color: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    font-weight: normal !important;
+  }
+
+  .focus-row td {
+    background-color: transparent !important;
+  }
+  
+  .doc-title {
+    color: black !important;
+    border-bottom: 2px solid black !important;
+  }
 }
