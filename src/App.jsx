@@ -182,9 +182,14 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
             </label>
             <label className="checkbox-item">
               <input type="checkbox" checked={edited.isFixedNightStandby} onChange={e => setEdited({ ...edited, isFixedNightStandby: e.target.checked })} />
-              고정대기 여부
+              고정 대기 여부
             </label>
-          </div>
+            <label className="checkbox-item">
+              <input type="checkbox" checked={edited.isNightShiftExcluded} onChange={e => setEdited({ ...edited, isNightShiftExcluded: e.target.checked })} />
+              야간 근무 제외
+            </label>
+            </div>
+
           <div className="input-group">
             <label>고정 대기 시간대 설정</label>
             <div className="time-input-row">
@@ -297,7 +302,15 @@ function App() {
   });
 
   const [activeTab, setActiveTab] = useState('roster');
-  const [employeeTabTeam, setEmployeeTabTeam] = useState('전체');
+  const [employeeTabTeam, setEmployeeTabTeam] = useState(() => {
+    const saved = localStorage.getItem('appSettings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.teams && parsed.teams.length > 0) return parsed.teams[0];
+    }
+    return '1팀';
+  });
+  const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
@@ -720,14 +733,25 @@ function App() {
 
         {activeTab === 'employees' && (
           <div className="admin-section">
-            <h2>직원 명단 관리 (이름을 눌러 수정)</h2>
+            <div className="section-header-with-action">
+              <h2>직원 명단 관리</h2>
+              <button 
+                className={`btn-edit-mode ${isStaffOrderEditMode ? 'active' : ''}`}
+                onClick={() => setIsStaffOrderEditMode(!isStaffOrderEditMode)}
+              >
+                {isStaffOrderEditMode ? <><Save size={16} /> 수정 완료</> : <><Edit2 size={16} /> 순서/삭제 수정</>}
+              </button>
+            </div>
             
             <div className="team-filter-tabs no-print">
-              {['전체', ...settings.teams].map(team => (
+              {settings.teams.map(team => (
                 <button 
                   key={team} 
                   className={`team-tab-btn ${employeeTabTeam === team ? 'active' : ''}`} 
-                  onClick={() => setEmployeeTabTeam(team)}
+                  onClick={() => {
+                    setEmployeeTabTeam(team);
+                    // 팀 변경 시 해당 팀원들 계급순으로 기본 정렬되어 보임 (isStaffOrderEditMode가 아닐 때)
+                  }}
                 >
                   {team}
                 </button>
@@ -735,21 +759,25 @@ function App() {
             </div>
 
             {(() => {
-              const filteredEmployees = employeeTabTeam === '전체' 
-                ? sortedAllEmployees 
-                : sortedAllEmployees.filter(e => e.team === employeeTabTeam);
+              // 현재 선택된 팀의 직원들
+              const teamEmployees = employees.filter(e => e.team === employeeTabTeam);
+              
+              // 수정 모드가 아닐 때는 계급순으로 정렬해서 보여줌
+              const displayEmployees = isStaffOrderEditMode 
+                ? teamEmployees 
+                : [...teamEmployees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
                 
               return (
                 <>
                   <div className="stats-summary no-print" style={{ justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                       <div className="stat-item total">
-                        <span className="stat-label">{employeeTabTeam === '전체' ? '전체' : employeeTabTeam} 인원</span>
-                        <span className="stat-value">{filteredEmployees.length}명</span>
+                        <span className="stat-label">{employeeTabTeam} 인원</span>
+                        <span className="stat-value">{teamEmployees.length}명</span>
                       </div>
                       <div className="stat-divider"></div>
                       {RANKS.map(rank => {
-                        const count = filteredEmployees.filter(e => e.rank === rank).length;
+                        const count = teamEmployees.filter(e => e.rank === rank).length;
                         if (count === 0) return null;
                         return (
                           <div key={rank} className="stat-item">
@@ -759,7 +787,9 @@ function App() {
                         );
                       })}
                     </div>
-                    <button className="btn-outline-small" onClick={sortByRank} title="전체 명단을 계급순으로 일괄 정렬합니다.">계급순 정렬</button>
+                    {!isStaffOrderEditMode && (
+                      <button className="btn-outline-small" onClick={sortByRank}>전체 계급순 정렬</button>
+                    )}
                   </div>
 
                   <div className="note-form no-print">
@@ -768,29 +798,49 @@ function App() {
                     <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
                       {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
                     </select></div>
+                    <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: '1.2rem' }}>
+                      <label className="checkbox-item">
+                        <input type="checkbox" checked={newEmployee.isNightShiftExcluded || false} onChange={e => setNewEmployee({...newEmployee, isNightShiftExcluded: e.target.checked})} />
+                        야간 제외
+                      </label>
+                    </div>
                     <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
                   </div>
+
                   <table className="admin-table interactive">
-                    <thead><tr><th width="40"></th><th>계급</th><th>성명</th><th>팀</th><th>순환대상</th><th>고정대기</th><th>고정시간</th></tr></thead>
+                    <thead>
+                      <tr>
+                        {isStaffOrderEditMode && <th width="40"></th>}
+                        <th>계급</th><th>성명</th><th>팀</th><th>고정대기</th><th>야간제외</th>
+                        {isStaffOrderEditMode && <th width="60">작업</th>}
+                      </tr>
+                    </thead>
                     <tbody>
-                      {filteredEmployees.map((emp, idx) => (
-                        <tr 
-                          key={emp.id} 
-                          draggable 
-                          onDragStart={() => handleDragStart(employees.findIndex(e => e.id === emp.id))}
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop(employees.findIndex(e => e.id === emp.id), employees, setEmployees)}
-                          className={draggedIdx === employees.findIndex(e => e.id === emp.id) ? 'dragging' : ''}
-                        >
-                          <td className="drag-handle"><GripVertical size={16} /></td>
-                          <td onClick={() => handleRowClick(emp)}>{emp.rank}</td>
-                          <td onClick={() => handleRowClick(emp)} className="emp-name-cell">{emp.name}</td>
-                          <td onClick={() => handleRowClick(emp)}>{emp.team}</td>
-                          <td onClick={() => handleRowClick(emp)}>{emp.isStandbyRotationEligible ? 'O' : 'X'}</td>
-                          <td onClick={() => handleRowClick(emp)}>{emp.isFixedNightStandby ? 'O' : 'X'}</td>
-                          <td onClick={() => handleRowClick(emp)}>{emp.fixedNightStandbySlot || '-'}</td>
-                        </tr>
-                      ))}
+                      {displayEmployees.map((emp) => {
+                        const globalIdx = employees.findIndex(e => e.id === emp.id);
+                        return (
+                          <tr 
+                            key={emp.id} 
+                            draggable={isStaffOrderEditMode}
+                            onDragStart={() => handleDragStart(globalIdx)}
+                            onDragOver={handleDragOver}
+                            onDrop={() => handleDrop(globalIdx, employees, setEmployees)}
+                            className={draggedIdx === globalIdx ? 'dragging' : ''}
+                          >
+                            {isStaffOrderEditMode && <td className="drag-handle"><GripVertical size={16} /></td>}
+                            <td onClick={() => !isStaffOrderEditMode && handleRowClick(emp)}>{emp.rank}</td>
+                            <td onClick={() => !isStaffOrderEditMode && handleRowClick(emp)} className="emp-name-cell">{emp.name}</td>
+                            <td onClick={() => !isStaffOrderEditMode && handleRowClick(emp)}>{emp.team}</td>
+                            <td onClick={() => !isStaffOrderEditMode && handleRowClick(emp)}>{emp.isFixedNightStandby ? (emp.fixedNightStandbySlot || 'O') : 'X'}</td>
+                            <td onClick={() => !isStaffOrderEditMode && handleRowClick(emp)}>{emp.isNightShiftExcluded ? 'O' : 'X'}</td>
+                            {isStaffOrderEditMode && (
+                              <td>
+                                <button className="delete-btn-table" onClick={() => deleteEmployee(emp.id)}><Trash size={14} /></button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </>

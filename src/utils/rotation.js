@@ -34,6 +34,29 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) => {
   if (!employee) return { available: false, reason: '직원 정보 없음' };
   
+  // 야간 근무 제외 대상 체크
+  if (employee.isNightShiftExcluded) {
+    const toMinutes = (time) => {
+      const [h, m] = time.split(':').map(Number);
+      return h * 60 + m;
+    };
+    
+    const start = toMinutes(slotStart);
+    let end = toMinutes(slotEnd);
+    if (end <= start) end += 24 * 60; // 자정 넘김 처리
+
+    // 야간 시간대 정의 (19:30 ~ 08:00) - 넉넉하게 19:00부터 08:30까지로 설정
+    const nightStart = 19 * 60;
+    const nightEnd = 8 * 60 + 30 + 24 * 60;
+
+    const isOverlapWithNight = (s, e) => Math.max(s, nightStart) < Math.min(e, nightEnd) || 
+                                       Math.max(s + 24 * 60, nightStart) < Math.min(e + 24 * 60, nightEnd);
+
+    if (isOverlapWithNight(start, end)) {
+      return { available: false, reason: '야간 제외' };
+    }
+  }
+
   const notes = specialNotes.filter(n => n.employeeId === employee.id);
   
   for (const note of notes) {
