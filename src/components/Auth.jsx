@@ -22,7 +22,7 @@ const Auth = () => {
   // user 상태에 따라 조건부 렌더링
   // user가 있으면 (로그인 상태이면) App 컴포넌트를,
   // user가 없으면 (로그아웃 상태이면) Login 컴포넌트를 보여줍니다.
-  return user ? <App /> : <Login />;
+  return user ? <App user={user} /> : <Login />;
 };
 
 export default Auth;

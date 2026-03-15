@@ -317,7 +317,7 @@ function VolunteerAddModal({ isOpen, onSave, onClose }) {
   );
 }
 
-function App() {
+function App({ user }) {
   const [employees, setEmployees] = useState([]);
   const [specialNotes, setSpecialNotes] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -363,26 +363,30 @@ function App() {
   });
 
   useEffect(() => {
-    const user = auth.currentUser;
     if (!user) return;
     const fetchData = async () => {
       setIsLoading(true);
       try {
         const savedSettings = await getDocument('settings', user.uid);
-        if (savedSettings) { setSettings(savedSettings); setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName }); }
+        if (savedSettings) { 
+          setSettings(savedSettings); 
+          setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName }); 
+        }
         const staffList = await getCollection('employees', 'userId', '==', user.uid);
         setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
         const notesList = await getCollection('specialNotes', 'userId', '==', user.uid);
         setSpecialNotes(notesList);
         if (savedSettings?.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
-      } catch (error) { console.error("Error loading data:", error); }
-      finally { setIsLoading(false); }
+      } catch (error) { 
+        console.error("Error loading data:", error); 
+      } finally { 
+        setIsLoading(false); 
+      }
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    const user = auth.currentUser;
     if (!user || isLoading) return;
     const fetchRoster = async () => {
       const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
@@ -406,12 +410,11 @@ function App() {
       }
     };
     fetchRoster();
-  }, [currentRoster.date, currentRoster.shiftType, isLoading, employees, specialNotes]);
+  }, [currentRoster.date, currentRoster.shiftType, isLoading, user, employees, specialNotes]);
 
   useEffect(() => {
-    const user = auth.currentUser;
     if (user && !isLoading) { saveDocument('settings', user.uid, settings); }
-  }, [settings, isLoading]);
+  }, [settings, isLoading, user]);
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
 
