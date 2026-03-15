@@ -331,6 +331,7 @@ function App() {
     return '1팀';
   });
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
+  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
@@ -482,6 +483,7 @@ function App() {
     if (!newEmployee.name) return alert('성명을 입력하세요.');
     setEmployees([...employees, { id: Date.now().toString(), ...newEmployee, isStandbyRotationEligible: true, isFixedNightStandby: false }]);
     setNewEmployee({ ...newEmployee, name: '' });
+    setIsAddingEmployee(false);
   };
 
   const addTeam = () => {
@@ -761,12 +763,20 @@ function App() {
           <div className="admin-section">
             <div className="section-header-with-action">
               <h2>직원 명단 관리</h2>
-              <button 
-                className={`btn-edit-mode ${isStaffOrderEditMode ? 'active' : ''}`}
-                onClick={() => setIsStaffOrderEditMode(!isStaffOrderEditMode)}
-              >
-                {isStaffOrderEditMode ? <><Save size={16} /> 수정 완료</> : <><Edit2 size={16} /> 순서/삭제 수정</>}
-              </button>
+              <div className="action-btns">
+                <button 
+                  className={`btn-edit-mode ${isAddingEmployee ? 'active' : ''}`}
+                  onClick={() => setIsAddingEmployee(!isAddingEmployee)}
+                >
+                  {isAddingEmployee ? <><X size={16} /> 추가 취소</> : <><Plus size={16} /> 직원 추가</>}
+                </button>
+                <button 
+                  className={`btn-edit-mode ${isStaffOrderEditMode ? 'active' : ''}`}
+                  onClick={() => setIsStaffOrderEditMode(!isStaffOrderEditMode)}
+                >
+                  {isStaffOrderEditMode ? <><Save size={16} /> 수정 완료</> : <><Edit2 size={16} /> 순서/삭제 수정</>}
+                </button>
+              </div>
             </div>
             
             <div className="team-filter-tabs no-print">
@@ -818,20 +828,22 @@ function App() {
                     )}
                   </div>
 
-                  <div className="note-form no-print">
-                    <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                    <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} onKeyDown={e => e.key === 'Enter' && addEmployee()} /></div>
-                    <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
-                      {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select></div>
-                    <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: '1.2rem' }}>
-                      <label className="checkbox-item">
-                        <input type="checkbox" checked={newEmployee.isNightShiftExcluded || false} onChange={e => setNewEmployee({...newEmployee, isNightShiftExcluded: e.target.checked})} />
-                        야간 제외
-                      </label>
+                  {isAddingEmployee && (
+                    <div className="note-form no-print animate-fade-in">
+                      <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                      <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} onKeyDown={e => e.key === 'Enter' && addEmployee()} /></div>
+                      <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
+                        {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select></div>
+                      <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: '1.2rem' }}>
+                        <label className="checkbox-item">
+                          <input type="checkbox" checked={newEmployee.isNightShiftExcluded || false} onChange={e => setNewEmployee({...newEmployee, isNightShiftExcluded: e.target.checked})} />
+                          야간 제외
+                        </label>
+                      </div>
+                      <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
                     </div>
-                    <button className="btn-primary" onClick={addEmployee}><Plus size={16} /> 추가</button>
-                  </div>
+                  )}
 
                   <table className="admin-table interactive">
                     <thead>
