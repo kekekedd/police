@@ -325,10 +325,24 @@ function App() {
         volunteerIds: saved.volunteerIds || []
       });
     } else {
+      const initialAssignments = {};
+      // 야간 근무인 경우 고정 대기자 자동 배치
+      if (currentRoster.shiftType === '야간') {
+        employees.forEach(emp => {
+          if (emp.team === currentRoster.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
+            const [s, e] = emp.fixedNightStandbySlot.split('-');
+            if (checkAvailability(emp, s, e, specialNotes).available) {
+              const key = `${emp.fixedNightStandbySlot}_대기근무`;
+              initialAssignments[key] = [...(initialAssignments[key] || []), emp.id];
+            }
+          }
+        });
+      }
+
       setCurrentRoster(prev => ({
         ...prev,
         weather: '맑음',
-        assignments: {},
+        assignments: initialAssignments,
         focusAreas: {},
         volunteerIds: []
       }));
@@ -383,14 +397,26 @@ function App() {
       Object.keys(newAssignments).forEach(key => {
         if (key.includes('_대기근무')) delete newAssignments[key];
       });
-      // 새 순번 반영
+
+      // 1. 고정 대기자 먼저 배치
+      employees.forEach(emp => {
+        if (emp.team === prev.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
+          const [s, e] = emp.fixedNightStandbySlot.split('-');
+          if (checkAvailability(emp, s, e, specialNotes).available) {
+            const key = `${emp.fixedNightStandbySlot}_대기근무`;
+            newAssignments[key] = [...(newAssignments[key] || []), emp.id];
+          }
+        }
+      });
+
+      // 2. 새 순환 순번 반영
       assignments.forEach(g => { 
         const key = `${g.slot}_대기근무`;
         newAssignments[key] = [...(newAssignments[key] || []), g.employeeId]; 
       });
       return { ...prev, assignments: newAssignments };
     });
-    alert('이전 야간 기반 자동 순번이 반영되었습니다.');
+    alert('이전 야간 기반 자동 순번이 반영되었습니다. (고정 대기자 자동 포함)');
   };
 
   const handleSave = () => {
