@@ -806,8 +806,24 @@ tr.dragging {
   cursor: not-allowed;
 }
 
+.print-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.print-only {
+  display: none;
+}
+
 @media print {
   .no-print { display: none !important; }
+  .print-only { display: block !important; }
   body { background: white; }
   .print-area.real-style { border: none; padding: 0; }
   main { padding: 0; margin: 0; }

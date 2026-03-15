@@ -37,6 +37,14 @@ const DEFAULT_DUTY_TYPES = [
 
 const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육", "외근", "기타"];
 const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
+const WEATHER_TYPES = ["맑음", "흐림", "비", "눈", "안개", "황사"];
+
+const formatDateWithDay = (dateStr) => {
+  if (!dateStr) return "";
+  const days = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  const date = new Date(dateStr);
+  return `${dateStr} ${days[date.getDay()]}`;
+};
 
 const getRankWeight = (rank) => {
   const index = RANKS.indexOf(rank);
@@ -556,8 +564,17 @@ function App() {
               <table className="summary-table real">
                 <tbody>
                   <tr>
-                    <td className="label">금일 일자</td><td colSpan="3" className="val">{currentRoster.date}</td>
-                    <td className="label">날 씨</td><td colSpan="3" className="val"><input type="text" className="print-input" value={currentRoster.weather} onChange={e => setCurrentRoster({...currentRoster, weather: e.target.value})} /></td>
+                    <td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td>
+                    <td className="label">날 씨</td><td colSpan="3" className="val">
+                      <select 
+                        className="print-select no-print" 
+                        value={currentRoster.weather} 
+                        onChange={e => setCurrentRoster({...currentRoster, weather: e.target.value})}
+                      >
+                        {WEATHER_TYPES.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                      <span className="print-only">{currentRoster.weather}</span>
+                    </td>
                   </tr>
                   <tr>
                     <td className="label">지구대장</td><td colSpan="3" className="val">{currentRoster.metadata.chief}</td>
