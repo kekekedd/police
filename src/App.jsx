@@ -202,7 +202,8 @@ function App() {
       stationName: '신사지구대',
       chiefName: '이이식',
       dutyTypes: DEFAULT_DUTY_TYPES,
-      teams: ['1팀', '2팀', '3팀', '4팀']
+      teams: ['1팀', '2팀', '3팀', '4팀'],
+      focusPlaces: ['신사역', '강남역', '논현역', '신사상가', '도산공원']
     };
     if (!saved) return defaults;
     const parsed = JSON.parse(saved);
@@ -232,12 +233,15 @@ function App() {
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '', team: settings.teams?.[0] || '1팀' });
   const [newDutyType, setNewDutyType] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
+  const [newFocusPlace, setNewFocusPlace] = useState('');
   const [editingDutyIdx, setEditingDutyIdx] = useState(null);
   const [editingDutyValue, setEditingDutyValue] = useState('');
   const [isEditingStation, setIsEditingStation] = useState(false);
   const [tempStationSettings, setTempStationSettings] = useState({ stationName: settings.stationName, chiefName: settings.chiefName });
   const [editingTeamIdx, setEditingTeamIdx] = useState(null);
   const [editingTeamValue, setEditingTeamValue] = useState('');
+  const [editingFocusIdx, setEditingFocusIdx] = useState(null);
+  const [editingFocusValue, setEditingFocusValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [editingEmployee, setEditingEmployee] = useState(null);
 
@@ -454,7 +458,20 @@ function App() {
                         <td className="duty-label">{duty}</td>
                         {currentTimeSlots.map(slot => {
                           const key = `${slot}_${duty}`;
-                          if (isFocus) return <td key={slot} className="focus-cell"><input type="text" className="focus-input" value={currentRoster.focusAreas[key] || ''} onChange={e => handleFocusChange(slot, duty, e.target.value)} /></td>;
+                          if (isFocus) return (
+                            <td key={slot} className="focus-cell">
+                              <select 
+                                className="focus-select" 
+                                value={currentRoster.focusAreas[key] || ''} 
+                                onChange={e => handleFocusChange(slot, duty, e.target.value)}
+                              >
+                                <option value="">선택</option>
+                                {settings.focusPlaces?.map(place => (
+                                  <option key={place} value={place}>{place}</option>
+                                ))}
+                              </select>
+                            </td>
+                          );
                           const ids = currentRoster.assignments[key] || [];
                           const staff = ids.map(id => employees.find(e => e.id === id))
                             .filter(Boolean)
@@ -695,6 +712,65 @@ function App() {
                               <button className="delete-btn" onClick={() => {
                                 if (window.confirm(`'${team}' 항목을 삭제하시겠습니까?`)) {
                                   setSettings({ ...settings, teams: settings.teams.filter((_, i) => i !== idx) });
+                                }
+                              }}><Trash size={14} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="settings-card">
+                  <h3>중점 구역(장소) 관리</h3>
+                  <p className="hint-text">근무표의 '중점' 행에서 선택할 수 있는 장소 목록입니다.</p>
+                  <div className="note-form no-print">
+                    <input 
+                      type="text" 
+                      placeholder="새 장소 명칭 (예: 신사역)" 
+                      value={newFocusPlace} 
+                      onChange={e => setNewFocusPlace(e.target.value)} 
+                    />
+                    <button className="btn-primary" onClick={() => {
+                      if (!newFocusPlace) return;
+                      setSettings({ ...settings, focusPlaces: [...(settings.focusPlaces || []), newFocusPlace] });
+                      setNewFocusPlace('');
+                    }}>추가</button>
+                  </div>
+                  <div className="duty-type-list">
+                    {(settings.focusPlaces || []).map((place, idx) => (
+                      <div key={idx} className="duty-type-item">
+                        {editingFocusIdx === idx ? (
+                          <div className="edit-inline-form">
+                            <input 
+                              type="text" 
+                              value={editingFocusValue} 
+                              onChange={e => setEditingFocusValue(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="action-btns">
+                              <button className="btn-save" onClick={() => {
+                                if (!editingFocusValue) return;
+                                const newPlaces = [...settings.focusPlaces];
+                                newPlaces[idx] = editingFocusValue;
+                                setSettings({ ...settings, focusPlaces: newPlaces });
+                                setEditingFocusIdx(null);
+                              }}><Save size={14} /></button>
+                              <button className="btn-cancel" onClick={() => setEditingFocusIdx(null)}><X size={14} /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{place}</span>
+                            <div className="action-btns">
+                              <button className="edit-btn" onClick={() => {
+                                setEditingFocusIdx(idx);
+                                setEditingFocusValue(place);
+                              }}><Edit2 size={14} /></button>
+                              <button className="delete-btn" onClick={() => {
+                                if (window.confirm(`'${place}' 항목을 삭제하시겠습니까?`)) {
+                                  setSettings({ ...settings, focusPlaces: settings.focusPlaces.filter((_, i) => i !== idx) });
                                 }
                               }}><Trash size={14} /></button>
                             </div>
