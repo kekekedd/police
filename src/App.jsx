@@ -337,7 +337,7 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
   );
 }
 
-function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, selectedValue, onSelect }) {
+function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, selectedValue, currentFocusAreas, dutyTypes, onSelect }) {
   if (!isOpen) return null;
 
   return (
@@ -354,15 +354,37 @@ function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, se
           >
             <div className="staff-name">선택 안함</div>
           </div>
-          {focusPlaces.map(place => (
-            <div 
-              key={place} 
-              className={`staff-card-v2 ${selectedValue === place ? 'selected' : ''}`}
-              onClick={() => { onSelect(place); onClose(); }}
-            >
-              <div className="staff-name">{place}</div>
-            </div>
-          ))}
+          {focusPlaces.map(place => {
+            // 동일 시간대 다른 근무지에 이미 배치되었는지 확인
+            let isAlreadyUsed = false;
+            if (currentFocusAreas) {
+              isAlreadyUsed = dutyTypes.some(d => {
+                if (d.name === duty) return false;
+                const key = `${slot}_${d.name}`;
+                return currentFocusAreas[key] === place;
+              });
+            }
+
+            const isSelected = selectedValue === place;
+
+            return (
+              <div 
+                key={place} 
+                className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isAlreadyUsed && !isSelected ? 'disabled' : ''}`}
+                onClick={() => {
+                  if (isAlreadyUsed && !isSelected) return;
+                  onSelect(place);
+                  onClose();
+                }}
+                title={isAlreadyUsed && !isSelected ? '이미 다른 근무지에 배치됨' : ''}
+              >
+                <div className="staff-name">{place}</div>
+                {isAlreadyUsed && !isSelected && (
+                  <div className="staff-note-label warning" style={{ fontSize: '0.6rem' }}>사용 중</div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="modal-footer">
           <button className="btn-outline" onClick={onClose}>닫기</button>
@@ -857,6 +879,8 @@ function App() {
               duty={focusModalState.duty} 
               focusPlaces={settings.focusPlaces || []} 
               selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} 
+              currentFocusAreas={currentRoster.focusAreas}
+              dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
               onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} 
             />
             <StaffSelectionModal 
