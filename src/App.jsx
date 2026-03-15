@@ -348,6 +348,24 @@ function App() {
     setNewEmployee({ ...newEmployee, name: '' });
   };
 
+  const addTeam = () => {
+    if (!newTeamName) return;
+    setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
+    setNewTeamName('');
+  };
+
+  const addFocusPlace = () => {
+    if (!newFocusPlace) return;
+    setSettings({ ...settings, focusPlaces: [...(settings.focusPlaces || []), newFocusPlace] });
+    setNewFocusPlace('');
+  };
+
+  const addDutyType = () => {
+    if (!newDutyType) return;
+    setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
+    setNewDutyType('');
+  };
+
   const handleRowClick = (emp) => {
     if (window.confirm(`${emp.rank} ${emp.name}님 정보를 수정하시겠습니까?`)) {
       setEditingEmployee(emp);
@@ -539,7 +557,7 @@ function App() {
 
                   <div className="note-form no-print">
                     <div className="input-group"><label>계급</label><select value={newEmployee.rank} onChange={e => setNewEmployee({...newEmployee, rank: e.target.value})}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                    <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} /></div>
+                    <div className="input-group"><label>성명</label><input type="text" placeholder="새 직원 성명" value={newEmployee.name} onChange={e => setNewEmployee({...newEmployee, name: e.target.value})} onKeyDown={e => e.key === 'Enter' && addEmployee()} /></div>
                     <div className="input-group"><label>팀</label><select value={newEmployee.team} onChange={e => setNewEmployee({...newEmployee, team: e.target.value})}>
                       {settings.teams.map(t => <option key={t} value={t}>{t}</option>)}
                     </select></div>
@@ -672,12 +690,9 @@ function App() {
                       placeholder="새 팀 명칭 (예: 5팀)" 
                       value={newTeamName} 
                       onChange={e => setNewTeamName(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && addTeam()}
                     />
-                    <button className="btn-primary" onClick={() => {
-                      if (!newTeamName) return;
-                      setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] });
-                      setNewTeamName('');
-                    }}>추가</button>
+                    <button className="btn-primary" onClick={addTeam}>추가</button>
                   </div>
                   <div className="duty-type-list">
                     {(settings.teams || []).map((team, idx) => (
@@ -731,12 +746,9 @@ function App() {
                       placeholder="새 장소 명칭 (예: 신사역)" 
                       value={newFocusPlace} 
                       onChange={e => setNewFocusPlace(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && addFocusPlace()}
                     />
-                    <button className="btn-primary" onClick={() => {
-                      if (!newFocusPlace) return;
-                      setSettings({ ...settings, focusPlaces: [...(settings.focusPlaces || []), newFocusPlace] });
-                      setNewFocusPlace('');
-                    }}>추가</button>
+                    <button className="btn-primary" onClick={addFocusPlace}>추가</button>
                   </div>
                   <div className="duty-type-list">
                     {(settings.focusPlaces || []).map((place, idx) => (
@@ -792,12 +804,9 @@ function App() {
                       placeholder="새 근무 유형 입력" 
                       value={newDutyType} 
                       onChange={e => setNewDutyType(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && addDutyType()}
                     />
-                    <button className="btn-primary" onClick={() => {
-                      if (!newDutyType) return;
-                      setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, newDutyType] });
-                      setNewDutyType('');
-                    }}>추가</button>
+                    <button className="btn-primary" onClick={addDutyType}>추가</button>
                   </div>
                   <div className="duty-type-list">
                     {settings.dutyTypes.map((type, idx) => (
