@@ -677,6 +677,16 @@ main {
 
 .focus-cell {
   padding: 0 !important;
+  text-align: center;
+}
+
+.focus-cell .staff-name-v {
+  width: 100%;
+  text-align: center;
+}
+
+.focus-row td {
+  background-color: #dbdbdb;
 }
 
 .focus-input, .focus-select {
