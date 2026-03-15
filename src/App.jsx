@@ -203,7 +203,7 @@ function App() {
       chiefName: '이이식',
       dutyTypes: DEFAULT_DUTY_TYPES,
       teams: ['1팀', '2팀', '3팀', '4팀'],
-      focusPlaces: ['신사역', '강남역', '논현역', '신사상가', '도산공원']
+      focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리']
     };
     if (!saved) return defaults;
     const parsed = JSON.parse(saved);
