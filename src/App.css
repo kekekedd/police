@@ -521,19 +521,46 @@ main {
   border: 1px solid #eee;
 }
 
-.duty-type-item .delete-btn {
+.duty-type-item .action-btns {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.duty-type-item .edit-btn, 
+.duty-type-item .delete-btn,
+.duty-type-item .btn-save,
+.duty-type-item .btn-cancel {
   background: none;
   border: none;
-  color: #ff5252;
   cursor: pointer;
-  padding: 2px;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 4px;
 }
 
-.duty-type-item .delete-btn:hover {
-  background: #ffebee;
+.duty-type-item .edit-btn { color: #1a237e; }
+.duty-type-item .edit-btn:hover { background: #e8eaf6; }
+.duty-type-item .delete-btn { color: #ff5252; }
+.duty-type-item .delete-btn:hover { background: #ffebee; }
+.duty-type-item .btn-save { color: #2e7d32; }
+.duty-type-item .btn-save:hover { background: #e8f5e9; }
+.duty-type-item .btn-cancel { color: #757575; }
+.duty-type-item .btn-cancel:hover { background: #f5f5f5; }
+
+.edit-inline-form {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.edit-inline-form input {
+  flex: 1;
+  padding: 0.4rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--primary-color);
   border-radius: 4px;
 }
 

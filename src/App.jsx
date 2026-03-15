@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings } from 'lucide-react';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2 } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability, rotateStandbyGroups } from './utils/rotation';
 import './App.css';
 
@@ -220,6 +220,8 @@ function App() {
   const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newEmployee, setNewEmployee] = useState({ rank: '경위', name: '' });
   const [newDutyType, setNewDutyType] = useState('');
+  const [editingDutyIdx, setEditingDutyIdx] = useState(null);
+  const [editingDutyValue, setEditingDutyValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [editingEmployee, setEditingEmployee] = useState(null);
 
@@ -578,12 +580,41 @@ function App() {
                 <div className="duty-type-list">
                   {settings.dutyTypes.map((type, idx) => (
                     <div key={idx} className="duty-type-item">
-                      <span>{type}</span>
-                      <button className="delete-btn" onClick={() => {
-                        if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
-                          setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
-                        }
-                      }}><Trash size={14} /></button>
+                      {editingDutyIdx === idx ? (
+                        <div className="edit-inline-form">
+                          <input 
+                            type="text" 
+                            value={editingDutyValue} 
+                            onChange={e => setEditingDutyValue(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="action-btns">
+                            <button className="btn-save" onClick={() => {
+                              if (!editingDutyValue) return;
+                              const newTypes = [...settings.dutyTypes];
+                              newTypes[idx] = editingDutyValue;
+                              setSettings({...settings, dutyTypes: newTypes});
+                              setEditingDutyIdx(null);
+                            }}><Save size={14} /></button>
+                            <button className="btn-cancel" onClick={() => setEditingDutyIdx(null)}><X size={14} /></button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <span>{type}</span>
+                          <div className="action-btns">
+                            <button className="edit-btn" onClick={() => {
+                              setEditingDutyIdx(idx);
+                              setEditingDutyValue(type);
+                            }}><Edit2 size={14} /></button>
+                            <button className="delete-btn" onClick={() => {
+                              if (window.confirm(`'${type}' 항목을 삭제하시겠습니까?`)) {
+                                setSettings({...settings, dutyTypes: settings.dutyTypes.filter((_, i) => i !== idx)});
+                              }
+                            }}><Trash size={14} /></button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
