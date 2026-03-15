@@ -259,7 +259,8 @@ function App() {
       longTermAbsent: 7
     },
     assignments: {},
-    focusAreas: {} 
+    focusAreas: {},
+    volunteerIds: []
   });
 
   const [activeTab, setActiveTab] = useState('roster');
@@ -279,6 +280,7 @@ function App() {
   const [editingFocusValue, setEditingFocusValue] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [focusModalState, setFocusModalState] = useState({ isOpen: false, slot: '', duty: '' });
+  const [volunteerModalOpen, setVolunteerModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   useEffect(() => {
@@ -293,13 +295,17 @@ function App() {
     const saved = rosters.find(r => r.date === currentRoster.date && r.shiftType === currentRoster.shiftType);
     
     if (saved) {
-      setCurrentRoster(saved);
+      setCurrentRoster({
+        ...saved,
+        volunteerIds: saved.volunteerIds || []
+      });
     } else {
       setCurrentRoster(prev => ({
         ...prev,
         weather: '맑음',
         assignments: {},
-        focusAreas: {}
+        focusAreas: {},
+        volunteerIds: []
       }));
     }
   }, [currentRoster.date, currentRoster.shiftType]);
@@ -453,6 +459,7 @@ function App() {
               <div className="input-group"><label>지구대장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
               <div className="input-group"><label>순찰팀장</label><input type="text" style={{ width: '100px' }} value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
               <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'} title="이전 야간 기반으로 대기조 3개조를 자동 생성합니다."><RefreshCw size={16} /> 자동 순번</button>
+              <button className="btn-outline" onClick={() => setVolunteerModalOpen(true)}><Plus size={16} /> 자원근무</button>
               <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
               <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
             </div>
@@ -474,7 +481,7 @@ function App() {
                   </tr>
                   <tr className="summary-values">
                     <td>{currentRoster.metadata.totalCount}</td><td>1</td>
-                    <td colSpan="3">{Object.entries(currentRoster.metadata.teamCounts).map(([t, c]) => <span key={t}>{t}({c}) </span>)}</td>
+                    <td colSpan="3" style={{ fontSize: '0.7rem' }}>{Object.entries(currentRoster.metadata.teamCounts).map(([t, c]) => <span key={t}>{t}({c}) </span>)}</td>
                     <td>{currentRoster.metadata.adminCount}</td><td>{casualties.length}</td><td>0</td>
                   </tr>
                 </tbody>
@@ -483,21 +490,27 @@ function App() {
               <div className="worker-section real">
                 <table className="worker-table real">
                   <thead>
-                    <tr><th colSpan="3">근 무 자</th><th colSpan="3">사 고 자</th></tr>
-                    <tr className="sub-header"><th>조별</th><th>계급</th><th>성명</th><th>계급</th><th>성명</th><th>사유</th></tr>
+                    <tr><th colSpan="2">근 무 자</th><th colSpan="2">사 고 자</th><th colSpan="2">자원근무자</th></tr>
+                    <tr className="sub-header"><th>계급</th><th>성명</th><th>성명</th><th>사유</th><th>계급</th><th>성명</th></tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: Math.max(14, currentTeamEmployees.length, casualties.length) }).map((_, i) => {
-                      const emp = currentTeamEmployees[i];
-                      const casualty = casualties[i];
-                      const cEmp = casualty ? employees.find(e => e.id === casualty.employeeId) : null;
-                      return (
-                        <tr key={i}>
-                          <td className="center">{i + 1}</td><td className="center">{emp?.rank || ''}</td><td className="center">{emp?.name || ''}</td>
-                          <td className="center">{cEmp?.rank || ''}</td><td className="center">{cEmp?.name || ''}</td><td className="center">{casualty?.type || ''}</td>
-                        </tr>
-                      );
-                    })}
+                    {(() => {
+                      const volEmps = (currentRoster.volunteerIds || []).map(id => employees.find(e => e.id === id)).filter(Boolean);
+                      const maxLen = Math.max(1, currentTeamEmployees.length, casualties.length, volEmps.length);
+                      return Array.from({ length: maxLen }).map((_, i) => {
+                        const emp = currentTeamEmployees[i];
+                        const casualty = casualties[i];
+                        const cEmp = casualty ? employees.find(e => e.id === casualty.employeeId) : null;
+                        const vEmp = volEmps[i];
+                        return (
+                          <tr key={i}>
+                            <td>{emp?.rank || ''}</td><td>{emp?.name || ''}</td>
+                            <td>{cEmp?.name || ''}</td><td>{casualty?.type || ''}</td>
+                            <td>{vEmp?.rank || ''}</td><td>{vEmp?.name || ''}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -550,6 +563,26 @@ function App() {
               focusPlaces={settings.focusPlaces || []} 
               selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} 
               onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} 
+            />
+            <StaffSelectionModal 
+              isOpen={volunteerModalOpen} 
+              onClose={() => setVolunteerModalOpen(false)} 
+              slot="자원" 
+              duty="근무" 
+              employees={employees} 
+              specialNotes={specialNotes} 
+              selectedIds={currentRoster.volunteerIds || []} 
+              onSelect={(id) => {
+                setCurrentRoster(prev => {
+                  const currentVolunteers = prev.volunteerIds || [];
+                  const isSelected = currentVolunteers.includes(id);
+                  if (isSelected) {
+                    return { ...prev, volunteerIds: currentVolunteers.filter(i => i !== id) };
+                  } else {
+                    return { ...prev, volunteerIds: [...currentVolunteers, id] };
+                  }
+                });
+              }} 
             />
           </div>
         )}
