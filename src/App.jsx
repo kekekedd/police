@@ -510,6 +510,12 @@ function App() {
         return { ...prev, assignments: { ...prev.assignments, [key]: currentIdsInThisCell.filter(i => i !== id) } };
       }
 
+      // 순찰차 인원 제한 체크 (순21호, 순23호 등 '순2' 포함 시 2명 제한)
+      if (modalState.duty.includes('순2') && currentIdsInThisCell.length >= 2) {
+        alert('순찰차 근무는 최대 2명까지 배치 가능합니다.');
+        return prev;
+      }
+
       // 새로 선택 시 중복 근무 체크
       const duplicateDuty = settings.dutyTypes.find(d => {
         if (d.name === modalState.duty) return false;
@@ -522,11 +528,36 @@ function App() {
         return prev;
       }
 
-      return { ...prev, assignments: { ...prev.assignments, [key]: [...currentIdsInThisCell, id] } };
+      const newIds = [...currentIdsInThisCell, id];
+      
+      // 순찰차 2명 채워지면 팝업 닫기 처리
+      if (modalState.duty.includes('순2') && newIds.length === 2) {
+        setTimeout(() => setModalState(prev => ({ ...prev, isOpen: false })), 200);
+      }
+
+      return { ...prev, assignments: { ...prev.assignments, [key]: newIds } };
     });
   };
 
   const handleFocusChange = (slot, duty, value) => {
+    if (!value) {
+      const key = `${slot}_${duty}`;
+      setCurrentRoster(prev => ({ ...prev, focusAreas: { ...prev.focusAreas, [key]: '' } }));
+      return;
+    }
+
+    // 동일 시간대 다른 중점 구역 중복 체크
+    const isDuplicate = settings.dutyTypes.some(d => {
+      if (d.name === duty) return false;
+      const otherKey = `${slot}_${d.name}`;
+      return currentRoster.focusAreas[otherKey] === value;
+    });
+
+    if (isDuplicate) {
+      alert(`'${value}' 구역은 이미 해당 시간대의 다른 근무지에 배치되어 있습니다.`);
+      return;
+    }
+
     const key = `${slot}_${duty}`;
     setCurrentRoster(prev => ({ ...prev, focusAreas: { ...prev.focusAreas, [key]: value } }));
   };
@@ -802,7 +833,7 @@ function App() {
                     })}
                   <tr className="shift-change-row">
                     <td className="duty-label">근무교대</td>
-                    {currentTimeSlots.map((s, i) => <td key={s} className="center">{(i === 0 || i === currentTimeSlots.length - 1) && <div className="shift-mark">O</div>}</td>)}
+                    {currentTimeSlots.map((s, i) => <td key={s} className="center">{(i === 0 || i === currentTimeSlots.length - 1) && <div className="shift-mark"></div>}</td>)}
                   </tr>
                 </tbody>
               </table>
