@@ -247,6 +247,23 @@ function App() {
     localStorage.setItem('appSettings', JSON.stringify(settings));
   }, [employees, specialNotes, settings]);
 
+  // 날짜/교대 변경 시 저장된 데이터 불러오기
+  useEffect(() => {
+    const rosters = JSON.parse(localStorage.getItem('rosters') || '[]');
+    const saved = rosters.find(r => r.date === currentRoster.date && r.shiftType === currentRoster.shiftType);
+    
+    if (saved) {
+      setCurrentRoster(saved);
+    } else {
+      setCurrentRoster(prev => ({
+        ...prev,
+        weather: '맑음',
+        assignments: {},
+        focusAreas: {}
+      }));
+    }
+  }, [currentRoster.date, currentRoster.shiftType]);
+
   const currentTimeSlots = currentRoster.shiftType === '주간' ? DAY_TIME_SLOTS : NIGHT_TIME_SLOTS;
 
   const handleToggleStaff = (id) => {
