@@ -95,7 +95,6 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
             }
 
             const isBlocked = !availability.available || (otherDutyName && !isSelected);
-            const blockReason = !availability.available ? availability.reason : (otherDutyName ? `${otherDutyName} 배치됨` : '');
             
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
             
@@ -683,8 +682,9 @@ function App() {
 
   const addNote = () => {
     if (!newNote.employeeId) return alert('직원을 선택하세요.');
+    if (!newNote.date) return alert('날짜를 선택하세요.');
     setSpecialNotes([...specialNotes, { ...newNote, id: Date.now().toString() }]);
-    setNewNote({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
+    setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false });
   };
 
   const deleteNote = (id) => setSpecialNotes(specialNotes.filter(n => n.id !== id));
@@ -712,6 +712,18 @@ function App() {
     setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, { name: newDutyType, shift: newDutyShift }] });
     setNewDutyType('');
     setNewDutyShift('공통');
+  };
+
+  const addDayTimeSlot = () => {
+    if (!newDayTimeSlot) return;
+    setSettings({ ...settings, dayTimeSlots: [...(settings.dayTimeSlots || DAY_TIME_SLOTS), newDayTimeSlot] });
+    setNewDayTimeSlot('');
+  };
+
+  const addNightTimeSlot = () => {
+    if (!newNightTimeSlot) return;
+    setSettings({ ...settings, nightTimeSlots: [...(settings.nightTimeSlots || NIGHT_TIME_SLOTS), newNightTimeSlot] });
+    setNewNightTimeSlot('');
   };
 
   const handleRowClick = (emp) => {
@@ -749,7 +761,8 @@ function App() {
 
   const handleSettingsDrop = (targetIdx, key) => {
     if (draggedIdx === null || draggedIdx === targetIdx) return;
-    const newList = [...settings[key]];
+    const list = settings[key] || (key === 'dayTimeSlots' ? DAY_TIME_SLOTS : NIGHT_TIME_SLOTS);
+    const newList = [...list];
     const draggedItem = newList.splice(draggedIdx, 1)[0];
     newList.splice(targetIdx, 0, draggedItem);
     setSettings({ ...settings, [key]: newList });
@@ -1348,7 +1361,7 @@ function App() {
 
                 <div className="settings-card">
                   <h3>중점 구역(장소) 관리</h3>
-                  <p className="hint-text">근무표의 '중점' 행에서 선택할 수 있는 장소 목록입니다.</p>
+                  <p className="hint-text">근무표의 &apos;중점&apos; 행에서 선택할 수 있는 장소 목록입니다.</p>
                   <div className="note-form no-print">
                     <input 
                       type="text" 
@@ -1406,7 +1419,7 @@ function App() {
               <div className="settings-column">
                 <div className="settings-card">
                   <h3>근무 유형(구분) 관리</h3>
-                  <p className="hint-text">근무표의 '구분' 열에 표시될 항목들입니다. ('중점' 포함 시 입력창이 생성됩니다)</p>
+                  <p className="hint-text">근무표의 &apos;구분&apos; 열에 표시될 항목들입니다. (&apos;중점&apos; 포함 시 입력창이 생성됩니다)</p>
                   <div className="note-form no-print">
                     <input 
                       type="text" 
