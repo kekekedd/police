@@ -188,12 +188,12 @@ main {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1rem;
-  border: 1px solid #d0d0d0;
+  border: 1px solid black;
   table-layout: fixed;
 }
 
 .summary-table.real td {
-  border: 1px solid #d0d0d0;
+  border: 1px solid black;
   padding: 6px 8px;
   text-align: center;
   font-size: 0.85rem;
@@ -219,12 +219,12 @@ main {
 .worker-table.real {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid #d0d0d0;
+  border: 1px solid black;
   table-layout: fixed;
 }
 
 .worker-table.real th, .worker-table.real td {
-  border: 1px solid #e0e0e0;
+  border: 1px solid black;
   padding: 2px 4px;
   font-size: 0.7rem;
   text-align: center;
@@ -254,12 +254,12 @@ main {
 .roster-table.real {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid #d0d0d0;
+  border: 1px solid black;
   table-layout: fixed;
 }
 
 .roster-table.real th, .roster-table.real td {
-  border: 1px solid #e0e0e0;
+  border: 1px solid black;
   padding: 2px;
   height: 42px;
   vertical-align: middle;
