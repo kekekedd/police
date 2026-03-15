@@ -466,7 +466,9 @@ function App() {
       chiefName: '이이식',
       dutyTypes: DEFAULT_DUTY_TYPES,
       teams: ['1팀', '2팀', '3팀', '4팀'],
-      focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리']
+      focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리'],
+      dayTimeSlots: DAY_TIME_SLOTS,
+      nightTimeSlots: NIGHT_TIME_SLOTS
     };
     if (!saved) return defaults;
     const parsed = JSON.parse(saved);
@@ -511,14 +513,20 @@ function App() {
   });
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
-  const [newNote, setNewNote] = useState({ employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
+  const [newNote, setNewNote] = useState({ date: new Date().toISOString().split('T')[0], employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
   const [newDutyType, setNewDutyType] = useState('');
   const [newDutyShift, setNewDutyShift] = useState('공통');
+  const [newDayTimeSlot, setNewDayTimeSlot] = useState('');
+  const [newNightTimeSlot, setNewNightTimeSlot] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
   const [newFocusPlace, setNewFocusPlace] = useState('');
   const [editingDutyIdx, setEditingDutyIdx] = useState(null);
   const [editingDutyValue, setEditingDutyValue] = useState('');
   const [editingDutyShift, setEditingDutyShift] = useState('공통');
+  const [editingDayTimeIdx, setEditingDayTimeIdx] = useState(null);
+  const [editingDayTimeValue, setEditingDayTimeValue] = useState('');
+  const [editingNightTimeIdx, setEditingNightTimeIdx] = useState(null);
+  const [editingNightTimeValue, setEditingNightTimeValue] = useState('');
   const [isEditingStation, setIsEditingStation] = useState(false);
   const [tempStationSettings, setTempStationSettings] = useState({ stationName: settings.stationName, chiefName: settings.chiefName });
   const [editingTeamIdx, setEditingTeamIdx] = useState(null);
@@ -553,7 +561,8 @@ function App() {
         employees.forEach(emp => {
           if (emp.team === currentRoster.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
             const [s, e] = emp.fixedNightStandbySlot.split('-');
-            if (checkAvailability(emp, s, e, specialNotes).available) {
+            const notesForDate = specialNotes.filter(n => n.date === currentRoster.date);
+            if (checkAvailability(emp, s, e, notesForDate).available) {
               const key = `${emp.fixedNightStandbySlot}_대기근무`;
               initialAssignments[key] = [...(initialAssignments[key] || []), emp.id];
             }
@@ -571,7 +580,9 @@ function App() {
     }
   }, [currentRoster.date, currentRoster.shiftType]);
 
-  const currentTimeSlots = currentRoster.shiftType === '주간' ? DAY_TIME_SLOTS : NIGHT_TIME_SLOTS;
+  const currentTimeSlots = currentRoster.shiftType === '주간' 
+    ? (settings.dayTimeSlots || DAY_TIME_SLOTS) 
+    : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
 
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
@@ -584,12 +595,6 @@ function App() {
       // 선택 해제 시
       if (isAlreadySelectedInThisCell) {
         return { ...prev, assignments: { ...prev.assignments, [key]: currentIdsInThisCell.filter(i => i !== id) } };
-      }
-
-      // 순찰차 인원 제한 체크 (순21호, 순23호 등 '순2' 포함 시 2명 제한)
-      if (modalState.duty.includes('순2') && currentIdsInThisCell.length >= 2) {
-        alert('순찰차 근무는 최대 2명까지 배치 가능합니다.');
-        return prev;
       }
 
       // 새로 선택 시 중복 근무 체크
@@ -606,11 +611,6 @@ function App() {
 
       const newIds = [...currentIdsInThisCell, id];
       
-      // 순찰차 2명 채워지면 팝업 닫기 처리
-      if (modalState.duty.includes('순2') && newIds.length === 2) {
-        setTimeout(() => setModalState(prev => ({ ...prev, isOpen: false })), 200);
-      }
-
       return { ...prev, assignments: { ...prev.assignments, [key]: newIds } };
     });
   };
@@ -641,7 +641,8 @@ function App() {
   const handleNextNightGenerate = () => {
     const rosters = JSON.parse(localStorage.getItem('rosters') || '[]');
     const lastNight = rosters.filter(r => r.shiftType === '야간').sort((a,b) => b.date.localeCompare(a.date))[0];
-    const { assignments, warnings } = rotateStandbyGroups(lastNight, employees, specialNotes);
+    const notesForDate = specialNotes.filter(n => n.date === currentRoster.date);
+    const { assignments, warnings } = rotateStandbyGroups(lastNight, employees, notesForDate);
     if (warnings.length > 0) alert("순번 생성 경고:\n" + warnings.join('\n'));
     
     setCurrentRoster(prev => {
@@ -655,7 +656,7 @@ function App() {
       employees.forEach(emp => {
         if (emp.team === prev.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
           const [s, e] = emp.fixedNightStandbySlot.split('-');
-          if (checkAvailability(emp, s, e, specialNotes).available) {
+          if (checkAvailability(emp, s, e, notesForDate).available) {
             const key = `${emp.fixedNightStandbySlot}_대기근무`;
             newAssignments[key] = [...(newAssignments[key] || []), emp.id];
           }
@@ -755,9 +756,9 @@ function App() {
     setDraggedIdx(null);
   };
 
-  // 사고자 명단 필터링 및 정렬 (전체 직원 순서 기준)
+  // 사고자 명단 필터링 및 정렬 (전체 직원 순서 기준 + 날짜 필터)
   const casualties = specialNotes
-    .filter(n => ['병가', '휴가'].includes(n.type) || n.isAllDay)
+    .filter(n => n.date === currentRoster.date && (['병가', '휴가'].includes(n.type) || n.isAllDay))
     .sort((a, b) => {
       const idxA = employees.findIndex(e => e.id === a.employeeId);
       const idxB = employees.findIndex(e => e.id === b.employeeId);
@@ -919,7 +920,7 @@ function App() {
               slot={modalState.slot} 
               duty={modalState.duty} 
               employees={[...employees, ...(currentRoster.volunteerStaff || [])]} 
-              specialNotes={specialNotes} 
+              specialNotes={specialNotes.filter(n => n.date === currentRoster.date)} 
               selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} 
               currentAssignments={currentRoster.assignments}
               dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)}
@@ -1074,6 +1075,10 @@ function App() {
           <div className="admin-section">
             <h2>특이사항 관리</h2>
             <div className="note-form no-print">
+              <div className="input-group">
+                <label>날짜</label>
+                <input type="date" value={newNote.date} onChange={e => setNewNote({...newNote, date: e.target.value})} />
+              </div>
               <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{sortedAllEmployees.map(e => <option key={e.id} value={e.id}>{e.rank} {e.name}</option>)}</select>
               <select value={newNote.type} onChange={e => {
                 const type = e.target.value;
@@ -1088,10 +1093,11 @@ function App() {
               <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} disabled={newNote.isAllDay} className={newNote.isAllDay ? 'disabled-input' : ''} />
               <button className="btn-primary" onClick={addNote}>추가</button>
             </div>
+            <p className="hint-text">*{newNote.date} 기준 특이사항 목록입니다.</p>
             <table className="admin-table">
               <thead><tr><th>직원</th><th>유형</th><th>시간</th><th>작업</th></tr></thead>
               <tbody>
-                {specialNotes.map(n => {
+                {specialNotes.filter(n => n.date === newNote.date).map(n => {
                   const emp = employees.find(e => e.id === n.employeeId);
                   return (
                     <tr key={n.id}>
@@ -1204,6 +1210,132 @@ function App() {
                               <button className="delete-btn" onClick={() => {
                                 if (window.confirm(`'${team}' 항목을 삭제하시겠습니까?`)) {
                                   setSettings({ ...settings, teams: settings.teams.filter((_, i) => i !== idx) });
+                                }
+                              }}><Trash size={14} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="settings-card">
+                  <h3>주간 근무 시간대 관리</h3>
+                  <p className="hint-text">주간 근무표의 가로축 시간 슬롯입니다.</p>
+                  <div className="note-form no-print">
+                    <input 
+                      type="text" 
+                      placeholder="예: 09:00-10:00" 
+                      value={newDayTimeSlot} 
+                      onChange={e => setNewDayTimeSlot(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()}
+                    />
+                    <button className="btn-primary" onClick={addDayTimeSlot}>추가</button>
+                  </div>
+                  <div className="duty-type-list">
+                    {(settings.dayTimeSlots || DAY_TIME_SLOTS).map((slot, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`duty-type-item ${draggedIdx === idx ? 'dragging' : ''}`}
+                        draggable={editingDayTimeIdx === null}
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleSettingsDrop(idx, 'dayTimeSlots')}
+                      >
+                        {editingDayTimeIdx === idx ? (
+                          <div className="edit-inline-form">
+                            <input 
+                              type="text" 
+                              value={editingDayTimeValue} 
+                              onChange={e => setEditingDayTimeValue(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="action-btns">
+                              <button className="btn-save" onClick={() => {
+                                if (!editingDayTimeValue) return;
+                                const newSlots = [...(settings.dayTimeSlots || DAY_TIME_SLOTS)];
+                                newSlots[idx] = editingDayTimeValue;
+                                setSettings({...settings, dayTimeSlots: newSlots});
+                                setEditingDayTimeIdx(null);
+                              }}><Save size={14} /></button>
+                              <button className="btn-cancel" onClick={() => setEditingDayTimeIdx(null)}><X size={14} /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{slot}</span>
+                            <div className="action-btns">
+                              <button className="edit-btn" onClick={() => {
+                                setEditingDayTimeIdx(idx);
+                                setEditingDayTimeValue(slot);
+                              }}><Edit2 size={14} /></button>
+                              <button className="delete-btn" onClick={() => {
+                                if (window.confirm(`'${slot}' 항목을 삭제하시겠습니까?`)) {
+                                  setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, i) => i !== idx) });
+                                }
+                              }}><Trash size={14} /></button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="settings-card">
+                  <h3>야간 근무 시간대 관리</h3>
+                  <p className="hint-text">야간 근무표의 가로축 시간 슬롯입니다.</p>
+                  <div className="note-form no-print">
+                    <input 
+                      type="text" 
+                      placeholder="예: 20:00-22:00" 
+                      value={newNightTimeSlot} 
+                      onChange={e => setNewNightTimeSlot(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()}
+                    />
+                    <button className="btn-primary" onClick={addNightTimeSlot}>추가</button>
+                  </div>
+                  <div className="duty-type-list">
+                    {(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((slot, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`duty-type-item ${draggedIdx === idx ? 'dragging' : ''}`}
+                        draggable={editingNightTimeIdx === null}
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleSettingsDrop(idx, 'nightTimeSlots')}
+                      >
+                        {editingNightTimeIdx === idx ? (
+                          <div className="edit-inline-form">
+                            <input 
+                              type="text" 
+                              value={editingNightTimeValue} 
+                              onChange={e => setEditingNightTimeValue(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="action-btns">
+                              <button className="btn-save" onClick={() => {
+                                if (!editingNightTimeValue) return;
+                                const newSlots = [...(settings.nightTimeSlots || NIGHT_TIME_SLOTS)];
+                                newSlots[idx] = editingNightTimeValue;
+                                setSettings({...settings, nightTimeSlots: newSlots});
+                                setEditingNightTimeIdx(null);
+                              }}><Save size={14} /></button>
+                              <button className="btn-cancel" onClick={() => setEditingNightTimeIdx(null)}><X size={14} /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{slot}</span>
+                            <div className="action-btns">
+                              <button className="edit-btn" onClick={() => {
+                                setEditingNightTimeIdx(idx);
+                                setEditingNightTimeValue(slot);
+                              }}><Edit2 size={14} /></button>
+                              <button className="delete-btn" onClick={() => {
+                                if (window.confirm(`'${slot}' 항목을 삭제하시겠습니까?`)) {
+                                  setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, i) => i !== idx) });
                                 }
                               }}><Trash size={14} /></button>
                             </div>
