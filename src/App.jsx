@@ -43,10 +43,14 @@ const getRankWeight = (rank) => {
   return index === -1 ? 99 : index;
 };
 
-function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, onSelect }) {
+function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, onSelect }) {
   if (!isOpen) return null;
 
-  const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  const sortedEmployees = [...employees].sort((a, b) => {
+    const idxA = employees.indexOf(a);
+    const idxB = employees.indexOf(b);
+    return idxA - idxB;
+  });
 
   return (
     <div className="modal-overlay no-print">
@@ -60,13 +64,28 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
             const [s, e] = slot.split('-');
             const availability = checkAvailability(emp, s, e, specialNotes);
             const isSelected = selectedIds.includes(emp.id);
+            
+            // 동일 시간대 다른 근무 배치 확인
+            let otherDuty = null;
+            if (currentAssignments) {
+              otherDuty = dutyTypes.find(d => {
+                if (d === duty) return false;
+                const key = `${slot}_${d}`;
+                return (currentAssignments[key] || []).includes(emp.id);
+              });
+            }
+
+            const isBlocked = !availability.available || (otherDuty && !isSelected);
+            const reason = !availability.available ? availability.reason : (otherDuty ? `${otherDuty} 배치됨` : '');
+            
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
             
             return (
               <div 
                 key={emp.id} 
-                className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${!availability.available ? 'disabled' : ''}`}
-                onClick={() => availability.available && onSelect(emp.id)}
+                className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isBlocked && !isSelected ? 'disabled' : ''}`}
+                onClick={() => (!isBlocked || isSelected) && onSelect(emp.id)}
+                title={isBlocked && !isSelected ? `배치 불가: ${reason}` : ''}
               >
                 <div className="staff-rank">{emp.rank}</div>
                 <div className="staff-name">{emp.name}</div>
@@ -592,7 +611,18 @@ function App() {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={employees} specialNotes={specialNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} onSelect={handleToggleStaff} />
+            <StaffSelectionModal 
+              isOpen={modalState.isOpen} 
+              onClose={() => setModalState({ ...modalState, isOpen: false })} 
+              slot={modalState.slot} 
+              duty={modalState.duty} 
+              employees={employees} 
+              specialNotes={specialNotes} 
+              selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} 
+              currentAssignments={currentRoster.assignments}
+              dutyTypes={settings.dutyTypes}
+              onSelect={handleToggleStaff} 
+            />
             <FocusPlaceSelectionModal 
               isOpen={focusModalState.isOpen} 
               onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} 
@@ -610,6 +640,8 @@ function App() {
               employees={employees} 
               specialNotes={specialNotes} 
               selectedIds={currentRoster.volunteerIds || []} 
+              currentAssignments={currentRoster.assignments}
+              dutyTypes={settings.dutyTypes}
               onSelect={(id) => {
                 setCurrentRoster(prev => {
                   const currentVolunteers = prev.volunteerIds || [];
