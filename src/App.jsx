@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2 } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability } from './utils/rotation';
-import { auth, saveDocument, getDocument, getCollection, removeDocument } from './firebase';
+import { auth, db, saveDocument, getDocument, getCollection, removeDocument } from './firebase';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import './App.css';
 
 const INITIAL_EMPLOYEES = [
