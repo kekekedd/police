@@ -363,7 +363,20 @@ function VolunteerAddModal({ isOpen, onSave, onClose }) {
       <div className="modal-content admin-modal">
         <div className="modal-header"><h3>자원근무자 직접 입력</h3><button onClick={onClose} className="close-btn"><X size={20} /></button></div>
         <div className="modal-body edit-form">
-          <div className="input-group"><label>계급</label><select value={rank} onChange={e => setRank(e.target.value)}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+          <div className="input-group">
+            <label>계급</label>
+            <div className="btn-group">
+              {RANKS.map(r => (
+                <button 
+                  key={r} 
+                  className={`selection-btn ${rank === r ? 'active' : ''}`}
+                  onClick={() => setRank(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="input-group"><label>성명</label><input type="text" placeholder="자원근무자 성명" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus /></div>
         </div>
         <div className="modal-footer"><button className="btn-outline" onClick={onClose}>취소</button><button className="btn-primary" onClick={handleAdd}><Plus size={16} /> 추가</button></div>
@@ -377,6 +390,7 @@ function App({ user }) {
   const [specialNotes, setSpecialNotes] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('roster');
   const [employeeTabTeam, setEmployeeTabTeam] = useState('1팀');
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
@@ -386,7 +400,18 @@ function App({ user }) {
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [focusModalState, setFocusModalState] = useState({ isOpen: false, slot: '', duty: '' });
   const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
-  const [newNote, setNewNote] = useState({ date: new Date().toISOString().split('T')[0], employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
+  const [noteTeamFilter, setNoteTeamFilter] = useState('');
+  
+  const [newNote, setNewNote] = useState({ 
+    startDate: new Date().toISOString().split('T')[0], 
+    endDate: new Date().toISOString().split('T')[0], 
+    employeeId: '', 
+    type: '육아시간', 
+    startTime: '07:30', 
+    endTime: '09:30', 
+    isAllDay: false 
+  });
+
   const [newDutyType, setNewDutyType] = useState('');
   const [newDutyShift, setNewDutyShift] = useState('공통');
   const [newDayTimeSlot, setNewDayTimeSlot] = useState('');
@@ -408,7 +433,6 @@ function App({ user }) {
   const [editingFocusIdx, setEditingFocusIdx] = useState(null);
   const [editingFocusValue, setEditingFocusValue] = useState('');
 
-  // 환경 설정 카드 접힘/펼침 상태 (기본값: 모두 접힘)
   const [expandedCards, setExpandedCards] = useState({
     station: false,
     team: false,
@@ -435,7 +459,6 @@ function App({ user }) {
   useEffect(() => {
     if (!user) return;
 
-    // 1. 설정 데이터 로드 (1회성)
     const fetchSettings = async () => {
       try {
         const savedSettings = await getDocument('settings', user.uid);
@@ -450,7 +473,6 @@ function App({ user }) {
     };
     fetchSettings();
 
-    // 2. 직원 명단 실시간 리스너
     const qEmployees = query(collection(db, 'employees'), where('userId', '==', user.uid));
     const unsubEmployees = onSnapshot(qEmployees, (snapshot) => {
       const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -461,7 +483,6 @@ function App({ user }) {
       setIsLoading(false);
     });
 
-    // 3. 특이사항 실시간 리스너
     const qNotes = query(collection(db, 'specialNotes'), where('userId', '==', user.uid));
     const unsubNotes = onSnapshot(qNotes, (snapshot) => {
       const notesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -474,7 +495,6 @@ function App({ user }) {
     };
   }, [user]);
 
-  // 4. 근무표 데이터 실시간 리스너
   useEffect(() => {
     if (!user || isLoading) return;
 
@@ -550,40 +570,98 @@ function App({ user }) {
   const handleSave = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return alert('로그인이 필요합니다.');
+    setIsSyncing(true);
     try {
       const rosterId = `${currentUser.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
       await saveDocument('rosters', rosterId, { ...currentRoster, userId: currentUser.uid, updatedAt: new Date().toISOString() });
-      alert('저장되었습니다.');
-    } catch (e) { alert('저장 실패'); }
+    } catch (e) { 
+      alert('저장 실패'); 
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const addNote = async () => {
-    if (!newNote.employeeId || !newNote.date) return alert('직원과 날짜를 선택하세요.');
+    if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
+    if (newNote.startDate > newNote.endDate) return alert('시작일이 종료일보다 늦을 수 없습니다.');
+    
+    setIsSyncing(true);
     const currentUser = auth.currentUser;
-    const noteId = Date.now().toString();
-    const noteData = { ...newNote, id: noteId, userId: currentUser.uid };
-    try { await saveDocument('specialNotes', noteId, noteData); setSpecialNotes([...specialNotes, noteData]); setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false }); } catch (e) { alert('저장 실패'); }
+    const notesToSave = [];
+    let curr = new Date(newNote.startDate);
+    const end = new Date(newNote.endDate);
+
+    while (curr <= end) {
+      const dateStr = curr.toISOString().split('T')[0];
+      const noteId = `${Date.now()}_${dateStr}_${newNote.employeeId}`;
+      notesToSave.push({
+        ...newNote,
+        date: dateStr,
+        id: noteId,
+        userId: currentUser.uid
+      });
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    try {
+      await Promise.all(notesToSave.map(n => saveDocument('specialNotes', n.id, n)));
+      setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false });
+    } catch (e) {
+      alert('저장 실패');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const deleteNote = async (id) => { try { await removeDocument('specialNotes', id); setSpecialNotes(specialNotes.filter(n => n.id !== id)); } catch (e) { alert('삭제 실패'); } };
+  const deleteNote = async (id) => { 
+    setIsSyncing(true);
+    try { 
+      await removeDocument('specialNotes', id); 
+    } catch (e) { 
+      alert('삭제 실패'); 
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const addEmployee = async (data) => {
     const currentUser = auth.currentUser;
     const staffWithUser = { ...data, userId: currentUser.uid };
-    try { await saveDocument('employees', data.id, staffWithUser); setEmployees([...employees, staffWithUser].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank))); setIsAddingEmployee(false); } catch (e) { alert('추가 실패'); }
+    setIsSyncing(true);
+    try { 
+      await saveDocument('employees', data.id, staffWithUser); 
+      setIsAddingEmployee(false); 
+    } catch (e) { 
+      alert('추가 실패'); 
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const updateEmployee = async (updated) => { 
     setEditingEmployee(null); 
+    setIsSyncing(true);
     try { 
       await saveDocument('employees', updated.id, updated); 
-      setEmployees(employees.map(e => e.id === updated.id ? updated : e)); 
     } catch (e) { 
       alert('수정 실패'); 
-    } 
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const deleteEmployee = async (id) => { if (window.confirm('정말 삭제하시겠습니까?')) { try { await removeDocument('employees', id); setEmployees(employees.filter(e => e.id !== id)); setSpecialNotes(specialNotes.filter(n => n.employeeId !== id)); setEditingEmployee(null); } catch (e) { alert('삭제 실패'); } } };
+  const deleteEmployee = async (id) => { 
+    if (window.confirm('정말 삭제하시겠습니까?')) { 
+      setIsSyncing(true);
+      try { 
+        await removeDocument('employees', id); 
+      } catch (e) { 
+        alert('삭제 실패'); 
+      } finally {
+        setIsSyncing(false);
+      }
+    } 
+  };
 
   const handleDragStart = (idx) => setDraggedIdx(idx);
   const handleDragOver = (e) => e.preventDefault();
@@ -610,6 +688,11 @@ function App({ user }) {
 
   return (
     <div className="app-container">
+      {isSyncing && (
+        <div className="sync-indicator">
+          <RefreshCw size={14} className="spin" /> 서버와 동기화 중...
+        </div>
+      )}
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
@@ -714,7 +797,6 @@ function App({ user }) {
           <div className="admin-section">
             <div className="section-header-with-action"><h2>직원 명단 관리</h2><div className="action-btns"><button className={`btn-edit-mode ${isAddingEmployee ? 'active' : ''}`} onClick={() => setIsAddingEmployee(!isAddingEmployee)}>{isAddingEmployee ? <><X size={16} /> 취소</> : <><Plus size={16} /> 추가</>}</button><button className={`btn-edit-mode ${isStaffOrderEditMode ? 'active' : ''}`} onClick={() => setIsStaffOrderEditMode(!isStaffOrderEditMode)}>{isStaffOrderEditMode ? <><Save size={16} /> 완료</> : <><Edit2 size={16} /> 편집</>}</button></div></div>
             
-            {/* 인원 통계 대시보드 */}
             <div className="stats-dashboard">
               <div className="stats-card-v3">
                 <h4>팀별 인원</h4>
@@ -769,53 +851,6 @@ function App({ user }) {
           </div>
         )}
 
-  const [newNote, setNewNote] = useState({ 
-    startDate: new Date().toISOString().split('T')[0], 
-    endDate: new Date().toISOString().split('T')[0], 
-    employeeId: '', 
-    type: '육아시간', 
-    startTime: '07:30', 
-    endTime: '09:30', 
-    isAllDay: false 
-  });
-
-  const [noteTeamFilter, setNoteTeamFilter] = useState('');
-
-  ...
-
-  const addNote = async () => {
-    if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
-    if (newNote.startDate > newNote.endDate) return alert('시작일이 종료일보다 늦을 수 없습니다.');
-    
-    const currentUser = auth.currentUser;
-    const notesToSave = [];
-    let curr = new Date(newNote.startDate);
-    const end = new Date(newNote.endDate);
-
-    while (curr <= end) {
-      const dateStr = curr.toISOString().split('T')[0];
-      const noteId = `${Date.now()}_${dateStr}_${newNote.employeeId}`;
-      notesToSave.push({
-        ...newNote,
-        date: dateStr,
-        id: noteId,
-        userId: currentUser.uid
-      });
-      curr.setDate(curr.getDate() + 1);
-    }
-
-    try {
-      await Promise.all(notesToSave.map(n => saveDocument('specialNotes', n.id, n)));
-      // onSnapshot이 자동으로 업데이트하므로 로컬 상태 수동 업데이트 불필요 (onSnapshot 사용 중이므로)
-      setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false });
-      alert(`${notesToSave.length}일간의 특이사항이 등록되었습니다.`);
-    } catch (e) {
-      alert('저장 실패');
-    }
-  };
-
-  ...
-
         {activeTab === 'notes' && (
           <div className="admin-section">
             <div className="section-header-with-action">
@@ -823,7 +858,6 @@ function App({ user }) {
             </div>
 
             <div className="notes-container-v2">
-              {/* 등록 카드 */}
               <div className="settings-card note-registration-card">
                 <h3>특이사항 등록</h3>
                 <div className="note-form-v2">
@@ -886,7 +920,6 @@ function App({ user }) {
                 </div>
               </div>
 
-              {/* 목록 카드 */}
               <div className="settings-card notes-list-card">
                 <div className="card-header-with-action">
                   <h3>특이사항 목록</h3>
@@ -926,7 +959,6 @@ function App({ user }) {
           <div className="admin-section">
             <h2>환경 설정</h2>
             <div className="settings-grid">
-              {/* 지구대 정보 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('station')}>
                   <div className="title-area">
@@ -948,7 +980,6 @@ function App({ user }) {
                 )}
               </div>
               
-              {/* 팀 관리 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('team')}>
                   <div className="title-area">
@@ -981,7 +1012,6 @@ function App({ user }) {
                 )}
               </div>
 
-              {/* 중점 구역 관리 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('focus')}>
                   <div className="title-area">
@@ -1014,7 +1044,6 @@ function App({ user }) {
                 )}
               </div>
 
-              {/* 근무 유형 관리 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('duty')}>
                   <div className="title-area">
@@ -1050,7 +1079,6 @@ function App({ user }) {
                 )}
               </div>
 
-              {/* 주간 시간대 관리 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('dayTime')}>
                   <div className="title-area">
@@ -1083,7 +1111,6 @@ function App({ user }) {
                 )}
               </div>
 
-              {/* 야간 시간대 관리 */}
               <div className="settings-card collapsible">
                 <div className="card-header-toggle" onClick={() => toggleCard('nightTime')}>
                   <div className="title-area">
