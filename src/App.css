@@ -1502,6 +1502,7 @@ tr.dragging {
 .note-tag-v2.교육 { background: #f3e8ff; color: #6b21a8; }
 .note-tag-v2.외근 { background: #e0f2fe; color: #075985; }
 .note-tag-v2.기타 { background: #f1f5f9; color: #475569; }
+.note-tag-v2.장기사고자 { background: #334155; color: white; }
 
 .note-time {
   font-size: 0.8rem;

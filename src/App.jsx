@@ -30,7 +30,7 @@ const DEFAULT_DUTY_TYPES = [
   { name: "관리반", shift: "주간" }
 ];
 
-const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육", "외근", "기타"];
+const NOTE_TYPES = ["육아시간", "지원근무", "휴가", "병가", "교육", "외근", "장기사고자", "기타"];
 const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
 const WEATHER_TYPES = ["맑음", "흐림", "비", "눈", "안개", "황사"];
 
@@ -375,17 +375,29 @@ function App({ user }) {
 
   const addNote = async () => {
     if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
+    if (newNote.startDate > newNote.endDate) return alert('시작일이 종료일보다 늦을 수 없습니다.');
+    
     setIsSyncing(true);
     let curr = new Date(newNote.startDate);
     const end = new Date(newNote.endDate);
+    const notesToSave = [];
+
     while (curr <= end) {
       const dateStr = curr.toISOString().split('T')[0];
-      const docId = `${user.uid}_${Date.now()}_${dateStr}_${newNote.employeeId}`;
-      await saveDocument('specialNotes', docId, { ...newNote, date: dateStr, id: docId, userId: user.uid });
+      const uniqueId = `${user.uid}_${dateStr}_${newNote.employeeId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      notesToSave.push(saveDocument('specialNotes', uniqueId, { ...newNote, date: dateStr, id: uniqueId, userId: user.uid }));
       curr.setDate(curr.getDate() + 1);
     }
-    setNewNote({ ...newNote, employeeId: '', isAllDay: false });
-    setIsSyncing(false);
+
+    try {
+      await Promise.all(notesToSave);
+      setNewNote({ ...newNote, employeeId: '', isAllDay: false });
+      alert('특이사항이 기간별로 등록되었습니다.');
+    } catch (e) {
+      alert('저장 실패');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const updateNote = async (id, updatedData) => {
@@ -509,6 +521,7 @@ function App({ user }) {
                 <tbody>
                   <tr><td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td><td className="label">날 씨</td><td colSpan="3" className="val">{currentRoster.weather}</td></tr>
                   <tr><td className="label">지구대/파출소장</td><td colSpan="3" className="val">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
+                  <tr className="summary-counts"><td className="label">총원</td><td className="label">지구대/파출소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">장기사고자</td></tr>
                   <tr className="summary-values">
                     <td>{employees.length}</td>
                     <td>1</td>
@@ -519,8 +532,8 @@ function App({ user }) {
                       })}
                     </td>
                     <td>{employees.filter(e => e.isAdminStaff).length}</td>
-                    <td>{todayCasualties.length}</td>
-                    <td>0</td>
+                    <td>{todayCasualties.filter(c => c.type !== '장기사고자').length}</td>
+                    <td>{todayCasualties.filter(c => c.type === '장기사고자').length}</td>
                   </tr>
                 </tbody>
               </table>
