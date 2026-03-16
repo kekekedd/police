@@ -249,6 +249,7 @@ function VolunteerAddModal({ isOpen, onSave, onClose }) {
   );
 }
 
+// Final optimized version
 function App({ user }) {
   const [employees, setEmployees] = useState([]);
   const [specialNotes, setSpecialNotes] = useState([]);
