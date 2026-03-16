@@ -1291,3 +1291,234 @@ tr.dragging {
   font-weight: 700;
   color: #1e293b;
 }
+
+/* Modernized Notes Styles */
+.notes-container-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .notes-container-v2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.note-form-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.note-input-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.note-input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 250px;
+}
+
+.note-input-group label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.date-range-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f8fafc;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.date-range-picker input {
+  border: none !important;
+  background: transparent !important;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e293b;
+  outline: none;
+}
+
+.team-filter-tabs-mini {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.team-tab-btn-mini {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.team-tab-btn-mini.active {
+  background: #1a237e;
+  color: white;
+  border-color: #1a237e;
+}
+
+.staff-selection-grid-mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.5rem;
+  max-height: 150px;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.staff-card-mini {
+  background: white;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.staff-card-mini .rank {
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.staff-card-mini .name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.staff-card-mini:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.staff-card-mini.selected {
+  background: #e0e7ff;
+  border-color: #1a237e;
+  box-shadow: 0 0 0 1px #1a237e;
+}
+
+.notes-list-v2 {
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.note-item-v2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: transform 0.2s;
+}
+
+.note-item-v2:hover {
+  transform: translateX(4px);
+  border-color: #e2e8f0;
+}
+
+.note-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.note-info .emp-name {
+  font-weight: 700;
+  color: #1e293b;
+  min-width: 100px;
+}
+
+.note-tag-v2 {
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.note-tag-v2.휴가 { background: #fee2e2; color: #991b1b; }
+.note-tag-v2.병가 { background: #fef3c7; color: #92400e; }
+.note-tag-v2.육아시간 { background: #dcfce7; color: #166534; }
+.note-tag-v2.지원근무 { background: #e0e7ff; color: #3730a3; }
+.note-tag-v2.교육 { background: #f3e8ff; color: #6b21a8; }
+.note-tag-v2.외근 { background: #e0f2fe; color: #075985; }
+.note-tag-v2.기타 { background: #f1f5f9; color: #475569; }
+
+.note-time {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.delete-btn-icon {
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-btn-icon:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.date-nav input {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.btn-full {
+  width: 100%;
+  padding: 0.8rem !important;
+  font-size: 1rem !important;
+}

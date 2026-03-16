@@ -769,26 +769,156 @@ function App({ user }) {
           </div>
         )}
 
+  const [newNote, setNewNote] = useState({ 
+    startDate: new Date().toISOString().split('T')[0], 
+    endDate: new Date().toISOString().split('T')[0], 
+    employeeId: '', 
+    type: '육아시간', 
+    startTime: '07:30', 
+    endTime: '09:30', 
+    isAllDay: false 
+  });
+
+  const [noteTeamFilter, setNoteTeamFilter] = useState('');
+
+  ...
+
+  const addNote = async () => {
+    if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
+    if (newNote.startDate > newNote.endDate) return alert('시작일이 종료일보다 늦을 수 없습니다.');
+    
+    const currentUser = auth.currentUser;
+    const notesToSave = [];
+    let curr = new Date(newNote.startDate);
+    const end = new Date(newNote.endDate);
+
+    while (curr <= end) {
+      const dateStr = curr.toISOString().split('T')[0];
+      const noteId = `${Date.now()}_${dateStr}_${newNote.employeeId}`;
+      notesToSave.push({
+        ...newNote,
+        date: dateStr,
+        id: noteId,
+        userId: currentUser.uid
+      });
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    try {
+      await Promise.all(notesToSave.map(n => saveDocument('specialNotes', n.id, n)));
+      // onSnapshot이 자동으로 업데이트하므로 로컬 상태 수동 업데이트 불필요 (onSnapshot 사용 중이므로)
+      setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false });
+      alert(`${notesToSave.length}일간의 특이사항이 등록되었습니다.`);
+    } catch (e) {
+      alert('저장 실패');
+    }
+  };
+
+  ...
+
         {activeTab === 'notes' && (
           <div className="admin-section">
-            <h2>특이사항 관리</h2>
-            <div className="note-form no-print">
-              <input type="date" value={newNote.date} onChange={e => setNewNote({...newNote, date: e.target.value})} />
-              <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{employees.map(e => <option key={e.id} value={e.id}>{e.rank} {e.name}</option>)}</select>
-              <select value={newNote.type} onChange={e => setNewNote({...newNote, type: e.target.value, isAllDay: ['휴가', '병가'].includes(e.target.value)})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-              <label className="checkbox-item"><input type="checkbox" checked={newNote.isAllDay} onChange={e => setNewNote({...newNote, isAllDay: e.target.checked})} /> 종일</label>
-              <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} disabled={newNote.isAllDay} />
-              <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} disabled={newNote.isAllDay} />
-              <button className="btn-primary" onClick={addNote}>추가</button>
+            <div className="section-header-with-action">
+              <h2>특이사항 관리</h2>
             </div>
-            <table className="admin-table">
-              <thead><tr><th>직원</th><th>유형</th><th>시간</th><th>작업</th></tr></thead>
-              <tbody>
-                {specialNotes.filter(n => n.date === newNote.date).map(n => (
-                  <tr key={n.id}><td>{employees.find(e => e.id === n.employeeId)?.name}</td><td><span className={`note-tag ${n.type}`}>{n.type}</span></td><td>{n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`}</td><td><button onClick={() => deleteNote(n.id)}>삭제</button></td></tr>
-                ))}
-              </tbody>
-            </table>
+
+            <div className="notes-container-v2">
+              {/* 등록 카드 */}
+              <div className="settings-card note-registration-card">
+                <h3>특이사항 등록</h3>
+                <div className="note-form-v2">
+                  <div className="note-input-row">
+                    <div className="note-input-group">
+                      <label>기간 설정</label>
+                      <div className="date-range-picker">
+                        <input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value, endDate: e.target.value < newNote.endDate ? newNote.endDate : e.target.value})} />
+                        <span>~</span>
+                        <input type="date" value={newNote.endDate} onChange={e => setNewNote({...newNote, endDate: e.target.value})} min={newNote.startDate} />
+                      </div>
+                    </div>
+                    <div className="note-input-group">
+                      <label>유형</label>
+                      <div className="btn-group">
+                        {NOTE_TYPES.map(t => (
+                          <button key={t} className={`selection-btn ${newNote.type === t ? 'active' : ''}`} onClick={() => setNewNote({...newNote, type: t, isAllDay: ['휴가', '병가'].includes(t)})}>{t}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="note-input-group">
+                    <label>직원 선택 (팀별)</label>
+                    <div className="team-filter-tabs-mini">
+                      <button className={`team-tab-btn-mini ${noteTeamFilter === '' ? 'active' : ''}`} onClick={() => setNoteTeamFilter('')}>전체</button>
+                      {settings.teams.map(t => (
+                        <button key={t} className={`team-tab-btn-mini ${noteTeamFilter === t ? 'active' : ''}`} onClick={() => setNoteTeamFilter(t)}>{t}</button>
+                      ))}
+                    </div>
+                    <div className="staff-selection-grid-mini scrollable">
+                      {employees
+                        .filter(e => !noteTeamFilter || e.team === noteTeamFilter)
+                        .map(e => (
+                          <div key={e.id} className={`staff-card-mini ${newNote.employeeId === e.id ? 'selected' : ''}`} onClick={() => setNewNote({...newNote, employeeId: e.id})}>
+                            <span className="rank">{e.rank}</span>
+                            <span className="name">{e.name}</span>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+
+                  <div className="note-input-row">
+                    <div className="note-input-group">
+                      <label className="checkbox-item"><input type="checkbox" checked={newNote.isAllDay} onChange={e => setNewNote({...newNote, isAllDay: e.target.checked})} /> 하루 종일</label>
+                    </div>
+                    {!newNote.isAllDay && (
+                      <div className="note-input-group">
+                        <label>시간 설정</label>
+                        <div className="time-input-row">
+                          <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} />
+                          <span>~</span>
+                          <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} />
+                        </div>
+                      </div>
+                    )}
+                    <button className="btn-primary btn-full" onClick={addNote} style={{ marginTop: 'auto' }}><Plus size={18} /> 특이사항 등록</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 목록 카드 */}
+              <div className="settings-card notes-list-card">
+                <div className="card-header-with-action">
+                  <h3>특이사항 목록</h3>
+                  <div className="date-nav">
+                    <input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value})} />
+                    <span>의 목록</span>
+                  </div>
+                </div>
+                <div className="notes-list-v2 scrollable">
+                  {specialNotes.filter(n => n.date === newNote.startDate).length === 0 ? (
+                    <div className="empty-state">해당 날짜에 등록된 특이사항이 없습니다.</div>
+                  ) : (
+                    specialNotes
+                      .filter(n => n.date === newNote.startDate)
+                      .sort((a, b) => employees.findIndex(e => e.id === a.employeeId) - employees.findIndex(e => e.id === b.employeeId))
+                      .map(n => {
+                        const emp = employees.find(e => e.id === n.employeeId);
+                        return (
+                          <div key={n.id} className="note-item-v2">
+                            <div className="note-info">
+                              <span className="emp-name">{emp?.rank} {emp?.name}</span>
+                              <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
+                              <span className="note-time">{n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`}</span>
+                            </div>
+                            <button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
