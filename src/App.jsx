@@ -447,11 +447,23 @@ function App({ user }) {
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
   const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
-  const absentees = todaysNotes.filter(n => employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName));
-  const longTermAbsentees = todaysNotes.filter(n => n.type === '장기사고자');
   
+  // 현황판용: 전체 직원 대상 특이사항 분류
+  const stationAllDayNotes = todaysNotes.filter(n => n.isAllDay);
+  const stationPartialNotes = todaysNotes.filter(n => !n.isAllDay);
+  
+  // 사용자의 요청에 따라: 종일 특이사항은 '장기사고자'로, 그 외(시간대별)는 '사고자'로 분류
+  const stationLongTermCount = stationAllDayNotes.length;
+  const stationAbsenteeCount = stationPartialNotes.length;
+
+  // 근무표용: 현재 팀 직원 대상 종일 특이사항 (사고자 명단에 표시)
+  const teamAllDayAbsentees = stationAllDayNotes.filter(n => 
+    employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
+  );
+  
+  // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 (부분 특이사항자 포함)
   const currentTeamEmployees = employees
-    .filter(e => e.team === currentRoster.metadata.teamName && !absentees.some(c => c.employeeId === e.id))
+    .filter(e => e.team === currentRoster.metadata.teamName && !stationAllDayNotes.some(n => n.employeeId === e.id))
     .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
   
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
@@ -571,15 +583,15 @@ function App({ user }) {
                           {settings.teams.filter(t => t.isVisible).map(t => <td className="label team-name-header" key={t.name}>{t.name}</td>)}
                           {settings.teams.filter(t => t.isVisible).length === 0 && <td className="label team-name-header"></td>}
                           <td rowSpan="2">0</td>
-                          <td rowSpan="2">{employees.filter(e => e.isAdminStaff).length}</td>
-                          <td rowSpan="2">{absentees.filter(c => c.type !== '장기사고자').length}</td>
-                          <td rowSpan="2">{longTermAbsentees.length}</td>
+                          <td rowSpan="2">{employees.filter(e => e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id)).length}</td>
+                          <td rowSpan="2">{stationAbsenteeCount}</td>
+                          <td rowSpan="2">{stationLongTermCount}</td>
                           <td rowSpan="2">0</td>
                       </tr>
                       <tr className="summary-counts-values">
                           {settings.teams.filter(t => t.isVisible).map(t => (
                               <td key={t.name}>
-                                  {employees.filter(e => e.team === t.name && !e.isAdminStaff).length}
+                                  {employees.filter(e => e.team === t.name && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id)).length}
                               </td>
                           ))}
                           {settings.teams.filter(t => t.isVisible).length === 0 && <td></td>}
@@ -606,7 +618,7 @@ function App({ user }) {
                         {Array.from({ length: 10 }).map((_, i) => {
                             const leftEmp = currentTeamEmployees[i];
                             const rightEmp = currentTeamEmployees[i + 10];
-                            const absentee = absentees[i];
+                            const absentee = teamAllDayAbsentees[i];
                             const absenteeEmp = absentee ? employees.find(e => e.id === absentee.employeeId) : null;
                             const volunteer = currentRoster.volunteerStaff && currentRoster.volunteerStaff[i];
                             return (
