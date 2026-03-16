@@ -364,38 +364,63 @@ function App({ user }) {
 
   useEffect(() => {
     if (!user) return;
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [savedSettings, staffList, notesList] = await Promise.all([
-          getDocument('settings', user.uid),
-          getCollection('employees', 'userId', '==', user.uid),
-          getCollection('specialNotes', 'userId', '==', user.uid)
-        ]);
 
-        if (savedSettings) { 
-          setSettings(savedSettings); 
-          setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName }); 
+    // 1. 설정 데이터 로드 (1회성)
+    const fetchSettings = async () => {
+      try {
+        const savedSettings = await getDocument('settings', user.uid);
+        if (savedSettings) {
+          setSettings(savedSettings);
+          setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName });
+          if (savedSettings.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
         }
-        setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
-        setSpecialNotes(notesList);
-        if (savedSettings?.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
-      } catch (error) { 
-        console.error("Error loading data:", error); 
-      } finally { 
-        setIsLoading(false); 
+      } catch (e) {
+        console.error("Settings load error:", e);
       }
     };
-    fetchData();
+    fetchSettings();
+
+    // 2. 직원 명단 실시간 리스너
+    const qEmployees = query(collection(db, 'employees'), where('userId', '==', user.uid));
+    const unsubEmployees = onSnapshot(qEmployees, (snapshot) => {
+      const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
+      setIsLoading(false); // 최소 직원 명단이라도 나오면 로딩 해제
+    }, (error) => {
+      console.error("Employees sync error:", error);
+      setIsLoading(false);
+    });
+
+    // 3. 특이사항 실시간 리스너
+    const qNotes = query(collection(db, 'specialNotes'), where('userId', '==', user.uid));
+    const unsubNotes = onSnapshot(qNotes, (snapshot) => {
+      const notesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSpecialNotes(notesList);
+    });
+
+    return () => {
+      unsubEmployees();
+      unsubNotes();
+    };
   }, [user]);
 
+  // 4. 근무표 데이터 실시간 리스너 (날짜/구분 변경 시에만 다시 연결)
   useEffect(() => {
     if (!user || isLoading) return;
-    const fetchRoster = async () => {
-      const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
-      const saved = await getDocument('rosters', rosterId);
-      if (saved) { setCurrentRoster(prev => ({ ...prev, ...saved, volunteerStaff: saved.volunteerStaff || [] })); }
-      else {
+
+    const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
+    const docRef = doc(db, 'rosters', rosterId);
+    
+    const unsubRoster = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const saved = docSnap.data();
+        setCurrentRoster(prev => ({ 
+          ...prev, 
+          ...saved, 
+          volunteerStaff: saved.volunteerStaff || [] 
+        }));
+      } else {
+        // 데이터가 없는 경우 초기화 로직
         const initialAssignments = {};
         if (currentRoster.shiftType === '야간') {
           employees.forEach(emp => {
@@ -409,11 +434,18 @@ function App({ user }) {
             }
           });
         }
-        setCurrentRoster(prev => ({ ...prev, weather: '맑음', assignments: initialAssignments, focusAreas: {}, volunteerStaff: [] }));
+        setCurrentRoster(prev => ({ 
+          ...prev, 
+          weather: '맑음', 
+          assignments: initialAssignments, 
+          focusAreas: {}, 
+          volunteerStaff: [] 
+        }));
       }
-    };
-    fetchRoster();
-  }, [currentRoster.date, currentRoster.shiftType, isLoading, user, employees, specialNotes]);
+    });
+
+    return () => unsubRoster();
+  }, [user, currentRoster.date, currentRoster.shiftType, isLoading]); // 의존성에서 employees, specialNotes 제거하여 무한루프 방지
 
   useEffect(() => {
     if (user && !isLoading) { saveDocument('settings', user.uid, settings); }
