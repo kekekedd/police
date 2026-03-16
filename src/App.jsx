@@ -73,6 +73,12 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
     }
   }, [isOpen, settings, activeTeamTab]);
 
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
   const filteredEmployees = activeTeamTab === '자원' 
@@ -136,6 +142,12 @@ function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   useEffect(() => { if(isOpen && settings.teams.length > 0) setNewEmp(prev => ({...prev, team: settings.teams[0].name})); }, [isOpen, settings]);
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   const handleAdd = () => {
     if (!newEmp.name) return alert('성명을 입력하세요.');
@@ -179,6 +191,12 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
       } else { setStartTime(""); setEndTime(""); }
     }
   }, [employee]);
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !edited) return null;
   const handleSave = () => {
     const finalData = { ...edited };
@@ -209,6 +227,12 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
 }
 
 function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, selectedValue, currentFocusAreas, dutyTypes, onSelect }) {
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   return (
     <div className="modal-overlay no-print">
@@ -239,6 +263,12 @@ function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, se
 function VolunteerAddModal({ isOpen, onSave, onClose }) {
   const [rank, setRank] = useState('경위');
   const [name, setName] = useState('');
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   const handleAdd = () => { if (!name) return alert('성명을 입력하세요.'); onSave({ id: `vol_${Date.now()}`, rank, name, isVolunteer: true }); setName(''); onClose(); };
   return (
