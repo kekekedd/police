@@ -102,7 +102,36 @@ main {
   gap: 0.4rem;
 }
 
-.header-card input, .header-card .toggle-buttons {
+.header-card .toggle-buttons {
+  display: flex !important;
+  background: #edf2f7 !important;
+  padding: 4px !important;
+  border-radius: 10px !important;
+  width: 100% !important;
+  gap: 4px !important;
+}
+
+.toggle-buttons button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #718096;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-buttons button.active {
+  background: white !important;
+  color: #1a237e !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  transform: scale(1.02);
+}
+
+.header-card input {
   border: none !important;
   background: #f7fafc !important;
   padding: 0.6rem !important;

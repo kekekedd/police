@@ -367,14 +367,17 @@ function App({ user }) {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const savedSettings = await getDocument('settings', user.uid);
+        const [savedSettings, staffList, notesList] = await Promise.all([
+          getDocument('settings', user.uid),
+          getCollection('employees', 'userId', '==', user.uid),
+          getCollection('specialNotes', 'userId', '==', user.uid)
+        ]);
+
         if (savedSettings) { 
           setSettings(savedSettings); 
           setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName }); 
         }
-        const staffList = await getCollection('employees', 'userId', '==', user.uid);
         setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
-        const notesList = await getCollection('specialNotes', 'userId', '==', user.uid);
         setSpecialNotes(notesList);
         if (savedSettings?.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
       } catch (error) { 
