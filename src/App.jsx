@@ -509,8 +509,19 @@ function App({ user }) {
                 <tbody>
                   <tr><td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td><td className="label">날 씨</td><td colSpan="3" className="val">{currentRoster.weather}</td></tr>
                   <tr><td className="label">지구대/파출소장</td><td colSpan="3" className="val">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
-                  <tr className="summary-counts"><td className="label">총원</td><td className="label">지구대/파출소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">전종자</td></tr>
-                  <tr className="summary-values"><td>{employees.length}</td><td>1</td><td colSpan="3">{settings.teams.map(t => `${t.name}(${employees.filter(e => e.team === t.name).length}) `)}</td><td>{assignedAdminCount}</td><td>{todayCasualties.length}</td><td>0</td></tr>
+                  <tr className="summary-values">
+                    <td>{employees.length}</td>
+                    <td>1</td>
+                    <td colSpan="3">
+                      {settings.teams.map(t => {
+                        const patrolCount = employees.filter(e => e.team === t.name && !e.isAdminStaff).length;
+                        return `${t.name}(${patrolCount}) `;
+                      })}
+                    </td>
+                    <td>{employees.filter(e => e.isAdminStaff).length}</td>
+                    <td>{todayCasualties.length}</td>
+                    <td>0</td>
+                  </tr>
                 </tbody>
               </table>
 
@@ -546,7 +557,7 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || []), ...employees.filter(e => e.isAdminStaff)]} specialNotes={specialNotes.filter(n => n.date === currentRoster.date)} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={handleToggleStaff} />
+            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={specialNotes.filter(n => n.date === currentRoster.date)} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={handleToggleStaff} />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
           </div>
