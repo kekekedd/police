@@ -778,19 +778,70 @@ tr.dragging {
 }
 
 .settings-card {
-  background: #f8f9fa;
+  background: white;
   padding: 1.5rem;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  border: 1px solid #edf2f7;
+  transition: all 0.3s ease;
+}
+
+.settings-card.collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-header-toggle {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  background: white;
+  transition: background 0.2s;
+}
+
+.card-header-toggle:hover {
+  background: #f8fafc;
+}
+
+.card-header-toggle h3 {
+  margin: 0 !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 1.1rem;
+  color: #1e293b;
+}
+
+.title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hint-text-small {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: normal;
+}
+
+.card-content-area {
+  padding: 0 1.5rem 1.5rem;
+  border-top: 1px solid #f1f5f9;
+  animation: slideDown 0.25s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .settings-card h3 {
   margin-top: 0;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   font-size: 1.1rem;
-  color: #333;
-  border-bottom: 1px solid #dee2e6;
-  padding-bottom: 0.5rem;
+  color: #1e293b;
+  font-weight: 700;
 }
 
 .hint-text {

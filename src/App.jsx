@@ -1,26 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2 } from 'lucide-react';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability } from './utils/rotation';
-import { auth, db, saveDocument, getDocument, getCollection, removeDocument } from './firebase';
+import { auth, db, saveDocument, getDocument, removeDocument } from './firebase';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import './App.css';
 
-const INITIAL_EMPLOYEES = [
-  { id: '1', name: '황광철', rank: '경감', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '2', name: '김성일', rank: '경감', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '3', name: '송병훈', rank: '경감', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '4', name: '이현식', rank: '경위', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '5', name: '김영혁', rank: '경위', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '6', name: '김민태', rank: '경위', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '7', name: '이진섭', rank: '경사', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '8', name: '박상민', rank: '경사', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '9', name: '양승헌', rank: '경사', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '10', name: '김대원', rank: '경장', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '11', name: '오나리', rank: '순경', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-  { id: '12', name: '모정은', rank: '경위', team: '2팀', isStandbyRotationEligible: false, isFixedNightStandby: false },
-  { id: '13', name: '안정민', rank: '경장', team: '2팀', isStandbyRotationEligible: false, isFixedNightStandby: false },
-  { id: '14', name: '손병목', rank: '경감', team: '2팀', isStandbyRotationEligible: true, isFixedNightStandby: false },
-];
+const INITIAL_EMPLOYEES = [];
 
 const DAY_TIME_SLOTS = [
   "07:30-08:00", "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00",
@@ -353,11 +338,25 @@ function App({ user }) {
   const [editingFocusIdx, setEditingFocusIdx] = useState(null);
   const [editingFocusValue, setEditingFocusValue] = useState('');
 
+  // 환경 설정 카드 접힘/펼침 상태 (기본값: 모두 접힘)
+  const [expandedCards, setExpandedCards] = useState({
+    station: false,
+    team: false,
+    focus: false,
+    duty: false,
+    dayTime: false,
+    nightTime: false
+  });
+
+  const toggleCard = (cardKey) => {
+    setExpandedCards(prev => ({ ...prev, [cardKey]: !prev[cardKey] }));
+  };
+
   const [currentRoster, setCurrentRoster] = useState({
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
-    metadata: { chief: DEFAULT_SETTINGS.chiefName, teamLeader: '황광철', teamName: '2팀', totalCount: 0, teamCounts: { '1팀': 0, '2팀': 0, '3팀': 0, '4팀': 0 }, adminCount: 2, longTermAbsent: 0 },
+    metadata: { chief: DEFAULT_SETTINGS.chiefName, teamLeader: '', teamName: '2팀', totalCount: 0, teamCounts: { '1팀': 0, '2팀': 0, '3팀': 0, '4팀': 0 }, adminCount: 2, longTermAbsent: 0 },
     assignments: {},
     focusAreas: {},
     volunteerStaff: []
@@ -386,7 +385,7 @@ function App({ user }) {
     const unsubEmployees = onSnapshot(qEmployees, (snapshot) => {
       const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
-      setIsLoading(false); // 최소 직원 명단이라도 나오면 로딩 해제
+      setIsLoading(false);
     }, (error) => {
       console.error("Employees sync error:", error);
       setIsLoading(false);
@@ -405,7 +404,7 @@ function App({ user }) {
     };
   }, [user]);
 
-  // 4. 근무표 데이터 실시간 리스너 (날짜/구분 변경 시에만 다시 연결)
+  // 4. 근무표 데이터 실시간 리스너
   useEffect(() => {
     if (!user || isLoading) return;
 
@@ -421,7 +420,6 @@ function App({ user }) {
           volunteerStaff: saved.volunteerStaff || [] 
         }));
       } else {
-        // 데이터가 없는 경우 초기화 로직
         const initialAssignments = {};
         if (currentRoster.shiftType === '야간') {
           employees.forEach(emp => {
@@ -446,7 +444,7 @@ function App({ user }) {
     });
 
     return () => unsubRoster();
-  }, [user, currentRoster.date, currentRoster.shiftType, isLoading]); // 의존성에서 employees, specialNotes 제거하여 무한루프 방지
+  }, [user, currentRoster.date, currentRoster.shiftType, isLoading, employees, specialNotes]);
 
   useEffect(() => {
     if (user && !isLoading) { saveDocument('settings', user.uid, settings); }
@@ -535,9 +533,9 @@ function App({ user }) {
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
-          {employees === INITIAL_EMPLOYEES && (
+          {employees.length === 0 && (
             <span style={{ fontSize: '0.75rem', background: '#ffd54f', color: '#000', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-              데모 데이터 (직원 없음)
+              직원 데이터 없음
             </span>
           )}
         </div>
@@ -680,125 +678,194 @@ function App({ user }) {
           <div className="admin-section">
             <h2>환경 설정</h2>
             <div className="settings-grid">
-              <div className="settings-card">
-                <div className="card-header-with-action"><h3>지구대 정보</h3>{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings({ ...settings, ...tempStationSettings }); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div>
-                <div className="info-display">
-                  <div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div>
-                  <div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div>
+              {/* 지구대 정보 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('station')}>
+                  <div className="title-area">
+                    <h3>지구대 정보</h3>
+                    <span className="hint-text-small">지구대 명칭 및 대장 성명 설정</span>
+                  </div>
+                  {expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
+                {expandedCards.station && (
+                  <div className="card-content-area active">
+                    <div className="card-header-with-action">
+                      {!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings({ ...settings, ...tempStationSettings }); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}
+                    </div>
+                    <div className="info-display">
+                      <div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div>
+                      <div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div>
+                    </div>
+                  </div>
+                )}
               </div>
               
-              <div className="settings-card">
-                <h3>팀 관리</h3>
-                <div className="note-form">
-                  <input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="새 팀" onKeyDown={e => e.key === 'Enter' && addTeam()} />
-                  <button className="btn-primary" onClick={addTeam}>추가</button>
+              {/* 팀 관리 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('team')}>
+                  <div className="title-area">
+                    <h3>팀 관리</h3>
+                    <span className="hint-text-small">근무 팀(조) 목록 관리</span>
+                  </div>
+                  {expandedCards.team ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
-                <div className="duty-type-list">
-                  {settings.teams.map((t, i) => (
-                    <div key={i} className="duty-type-item">
-                      {editingTeamIdx === i ? (
-                        <div className="edit-inline-form">
-                          <input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);})()} />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div>
-                        </div>
-                      ) : (
-                        <><span>{t}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i);setEditingTeamValue(t);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,teams:settings.teams.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
-                      )}
+                {expandedCards.team && (
+                  <div className="card-content-area active">
+                    <div className="note-form">
+                      <input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="새 팀" onKeyDown={e => e.key === 'Enter' && addTeam()} />
+                      <button className="btn-primary" onClick={addTeam}>추가</button>
                     </div>
-                  ))}
-                </div>
+                    <div className="duty-type-list">
+                      {settings.teams.map((t, i) => (
+                        <div key={i} className="duty-type-item">
+                          {editingTeamIdx === i ? (
+                            <div className="edit-inline-form">
+                              <input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);})()} />
+                              <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div>
+                            </div>
+                          ) : (
+                            <><span>{t}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i);setEditingTeamValue(t);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,teams:settings.teams.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="settings-card">
-                <h3>중점 구역 관리</h3>
-                <div className="note-form">
-                  <input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} />
-                  <button className="btn-primary" onClick={addFocusPlace}>추가</button>
+              {/* 중점 구역 관리 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('focus')}>
+                  <div className="title-area">
+                    <h3>중점 구역 관리</h3>
+                    <span className="hint-text-small">거점 및 중점 순찰 구역 설정</span>
+                  </div>
+                  {expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
-                <div className="duty-type-list">
-                  {settings.focusPlaces?.map((p, i) => (
-                    <div key={i} className="duty-type-item">
-                      {editingFocusIdx === i ? (
-                        <div className="edit-inline-form">
-                          <input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingFocusValue)return;const np=[...settings.focusPlaces];np[i]=editingFocusValue;setSettings({...settings,focusPlaces:np});setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div>
-                        </div>
-                      ) : (
-                        <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i);setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,focusPlaces:settings.focusPlaces.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
-                      )}
+                {expandedCards.focus && (
+                  <div className="card-content-area active">
+                    <div className="note-form">
+                      <input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} />
+                      <button className="btn-primary" onClick={addFocusPlace}>추가</button>
                     </div>
-                  ))}
-                </div>
+                    <div className="duty-type-list">
+                      {settings.focusPlaces?.map((p, i) => (
+                        <div key={i} className="duty-type-item">
+                          {editingFocusIdx === i ? (
+                            <div className="edit-inline-form">
+                              <input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus />
+                              <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingFocusValue)return;const np=[...settings.focusPlaces];np[i]=editingFocusValue;setSettings({...settings,focusPlaces:np});setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div>
+                            </div>
+                          ) : (
+                            <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i);setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,focusPlaces:settings.focusPlaces.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="settings-card">
-                <h3>근무 유형 관리</h3>
-                <p className="hint-text">각 지구대 근무 실정에 맞게 근무 항목을 수정하거나 추가하세요.</p>
-                <div className="note-form">
-                  <input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} />
-                  <select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>
-                  <button className="btn-primary" onClick={addDutyType}>추가</button>
+              {/* 근무 유형 관리 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('duty')}>
+                  <div className="title-area">
+                    <h3>근무 유형 관리</h3>
+                    <span className="hint-text-small">상황, 순찰, 대기 등 근무 항목 설정</span>
+                  </div>
+                  {expandedCards.duty ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
-                <div className="duty-type-list">
-                  {settings.dutyTypes.map((d, i) => (
-                    <div key={i} className="duty-type-item">
-                      {editingDutyIdx === i ? (
-                        <div className="edit-inline-form">
-                          <input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus />
-                          <select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDutyValue)return;const nd=[...settings.dutyTypes];nd[i]={name:editingDutyValue,shift:editingDutyShift};setSettings({...settings,dutyTypes:nd});setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div>
-                        </div>
-                      ) : (
-                        <><span>{d.name} ({d.shift})</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i);setEditingDutyValue(d.name);setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
-                      )}
+                {expandedCards.duty && (
+                  <div className="card-content-area active">
+                    <p className="hint-text">각 지구대 근무 실정에 맞게 근무 항목을 수정하거나 추가하세요.</p>
+                    <div className="note-form">
+                      <input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} />
+                      <select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>
+                      <button className="btn-primary" onClick={addDutyType}>추가</button>
                     </div>
-                  ))}
-                </div>
+                    <div className="duty-type-list">
+                      {settings.dutyTypes.map((d, i) => (
+                        <div key={i} className="duty-type-item">
+                          {editingDutyIdx === i ? (
+                            <div className="edit-inline-form">
+                              <input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus />
+                              <select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>
+                              <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDutyValue)return;const nd=[...settings.dutyTypes];nd[i]={name:editingDutyValue,shift:editingDutyShift};setSettings({...settings,dutyTypes:nd});setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div>
+                            </div>
+                          ) : (
+                            <><span>{d.name} ({d.shift})</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i);setEditingDutyValue(d.name);setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="settings-card">
-                <h3>주간 시간대 관리</h3>
-                <div className="note-form">
-                  <input type="text" value={newDayTimeSlot} onChange={e => setNewDayTimeSlot(e.target.value)} placeholder="09:00-10:00" onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()} />
-                  <button className="btn-primary" onClick={addDayTimeSlot}>추가</button>
+              {/* 주간 시간대 관리 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('dayTime')}>
+                  <div className="title-area">
+                    <h3>주간 시간대 관리</h3>
+                    <span className="hint-text-small">주간 근무 시간표 슬롯 설정</span>
+                  </div>
+                  {expandedCards.dayTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
-                <div className="duty-type-list">
-                  {(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => (
-                    <div key={i} className="duty-type-item">
-                      {editingDayTimeIdx === i ? (
-                        <div className="edit-inline-form">
-                          <input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDayTimeValue)return;const nts=[...settings.dayTimeSlots];nts[i]=editingDayTimeValue;setSettings({...settings,dayTimeSlots:nts});setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div>
-                        </div>
-                      ) : (
-                        <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i);setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
-                      )}
+                {expandedCards.dayTime && (
+                  <div className="card-content-area active">
+                    <div className="note-form">
+                      <input type="text" value={newDayTimeSlot} onChange={e => setNewDayTimeSlot(e.target.value)} placeholder="09:00-10:00" onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()} />
+                      <button className="btn-primary" onClick={addDayTimeSlot}>추가</button>
                     </div>
-                  ))}
-                </div>
+                    <div className="duty-type-list">
+                      {(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => (
+                        <div key={i} className="duty-type-item">
+                          {editingDayTimeIdx === i ? (
+                            <div className="edit-inline-form">
+                              <input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus />
+                              <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDayTimeValue)return;const nts=[...settings.dayTimeSlots];nts[i]=editingDayTimeValue;setSettings({...settings,dayTimeSlots:nts});setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div>
+                            </div>
+                          ) : (
+                            <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i);setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="settings-card">
-                <h3>야간 시간대 관리</h3>
-                <div className="note-form">
-                  <input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} />
-                  <button className="btn-primary" onClick={addNightTimeSlot}>추가</button>
+              {/* 야간 시간대 관리 */}
+              <div className="settings-card collapsible">
+                <div className="card-header-toggle" onClick={() => toggleCard('nightTime')}>
+                  <div className="title-area">
+                    <h3>야간 시간대 관리</h3>
+                    <span className="hint-text-small">야간 근무 시간표 슬롯 설정</span>
+                  </div>
+                  {expandedCards.nightTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </div>
-                <div className="duty-type-list">
-                  {(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => (
-                    <div key={i} className="duty-type-item">
-                      {editingNightTimeIdx === i ? (
-                        <div className="edit-inline-form">
-                          <input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingNightTimeValue)return;const nts=[...settings.nightTimeSlots];nts[i]=editingNightTimeValue;setSettings({...settings,nightTimeSlots:nts});setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div>
-                        </div>
-                      ) : (
-                        <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i);setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
-                      )}
+                {expandedCards.nightTime && (
+                  <div className="card-content-area active">
+                    <div className="note-form">
+                      <input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} />
+                      <button className="btn-primary" onClick={addNightTimeSlot}>추가</button>
                     </div>
-                  ))}
-                </div>
+                    <div className="duty-type-list">
+                      {(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => (
+                        <div key={i} className="duty-type-item">
+                          {editingNightTimeIdx === i ? (
+                            <div className="edit-inline-form">
+                              <input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus />
+                              <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingNightTimeValue)return;const nts=[...settings.nightTimeSlots];nts[i]=editingNightTimeValue;setSettings({...settings,nightTimeSlots:nts});setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div>
+                            </div>
+                          ) : (
+                            <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i);setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
