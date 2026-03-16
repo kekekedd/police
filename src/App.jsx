@@ -51,10 +51,14 @@ const DEFAULT_SETTINGS = {
 
 const formatDateWithDay = (dateStr) => {
   if (!dateStr) return "";
-  const days = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
   const date = new Date(dateStr);
-  return `${dateStr} ${days[date.getDay()]}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}년 ${month}월 ${day}일 (${days[date.getDay()]})`;
 };
+
 
 const getRankWeight = (rank) => {
   const index = RANKS.indexOf(rank);
@@ -296,13 +300,25 @@ function App({ user }) {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
-        setSettings({...data, teams: migratedTeams});
-        setTempStationSettings({ stationName: data.stationName, chiefName: data.chiefName });
-        if (!currentRoster.metadata.teamName && migratedTeams.filter(t => t.isVisible).length > 0) {
-          const firstVisibleTeam = migratedTeams.find(t => t.isVisible).name;
+        const visibleTeams = migratedTeams.filter(t => t.isVisible);
+        
+        setSettings({...DEFAULT_SETTINGS, ...data, teams: migratedTeams});
+        setTempStationSettings({ stationName: data.stationName || DEFAULT_SETTINGS.stationName, chiefName: data.chiefName || DEFAULT_SETTINGS.chiefName });
+
+        if (!currentRoster.metadata.teamName && visibleTeams.length > 0) {
+          const firstVisibleTeam = visibleTeams[0].name;
           setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, teamName: firstVisibleTeam, chief: data.chiefName || prev.metadata.chief } }));
+        }
+        if (!employeeTabTeam && migratedTeams.length > 0) {
           setEmployeeTabTeam(migratedTeams[0].name);
         }
+      } else {
+         setSettings(DEFAULT_SETTINGS);
+         setTempStationSettings({ stationName: DEFAULT_SETTINGS.stationName, chiefName: DEFAULT_SETTINGS.chiefName });
+         if (DEFAULT_SETTINGS.teams.length > 0) {
+           setEmployeeTabTeam(DEFAULT_SETTINGS.teams[0].name);
+           setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, teamName: DEFAULT_SETTINGS.teams[0].name }}));
+         }
       }
       setIsDataInitialized(true);
     });
@@ -430,8 +446,14 @@ function App({ user }) {
   const handleDrop = (targetIdx, list, setList) => { if (draggedIdx === null || draggedIdx === targetIdx) return; const newList = [...list]; const item = newList.splice(draggedIdx, 1)[0]; newList.splice(targetIdx, 0, item); setList(newList); setDraggedIdx(null); };
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
-  const todayCasualties = specialNotes.filter(n => n.date === currentRoster.date && (['병가', '휴가', '교육', '외근'].includes(n.type) || n.isAllDay)).sort((a, b) => getRankWeight(employees.find(e => e.id === a.employeeId)?.rank) - getRankWeight(employees.find(e => e.id === b.employeeId)?.rank));
-  const currentTeamEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName && !todayCasualties.some(c => c.employeeId === e.id)).sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
+  const absentees = todaysNotes.filter(n => employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName));
+  const longTermAbsentees = todaysNotes.filter(n => n.type === '장기사고자');
+  
+  const currentTeamEmployees = employees
+    .filter(e => e.team === currentRoster.metadata.teamName && !absentees.some(c => c.employeeId === e.id))
+    .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
 
   if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div></div></div>);
@@ -517,39 +539,85 @@ function App({ user }) {
 
             <div className="print-area real-style">
               <div className="doc-title">{settings.stationName} 근무일지 ({currentRoster.shiftType === '야간' ? '야' : '주'})</div>
+              
               <table className="summary-table real">
-                <tbody>
-                  <tr><td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td><td className="label">날 씨</td><td colSpan="3" className="val">{currentRoster.weather}</td></tr>
-                  <tr><td className="label">지구대/파출소장</td><td colSpan="3" className="val">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
-                  <tr className="summary-counts"><td className="label">총원</td><td className="label">지구대/파출소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">장기사고자</td></tr>
-                  <tr className="summary-values">
-                    <td>{employees.length}</td>
-                    <td>1</td>
-                    <td colSpan="3">
-                      {settings.teams.map(t => {
-                        const patrolCount = employees.filter(e => e.team === t.name && !e.isAdminStaff).length;
-                        return `${t.name}(${patrolCount}) `;
-                      })}
-                    </td>
-                    <td>{employees.filter(e => e.isAdminStaff).length}</td>
-                    <td>{todayCasualties.filter(c => c.type !== '장기사고자').length}</td>
-                    <td>{todayCasualties.filter(c => c.type === '장기사고자').length}</td>
-                  </tr>
-                </tbody>
+                  <tbody>
+                      <tr>
+                          <td className="label fixed-width">금일 일자</td>
+                          <td className="val" colSpan="3">{formatDateWithDay(currentRoster.date)}</td>
+                          <td className="label fixed-width">날 씨</td>
+                          <td className="val" colSpan="1">{currentRoster.weather}</td>
+                          <td className="label fixed-width">순찰팀장</td>
+                          <td className="val" colSpan="1">{currentRoster.metadata.teamName} {currentRoster.metadata.teamLeader}</td>
+                      </tr>
+                      <tr>
+                          <td className="label fixed-width">지구대장/파출소장</td>
+                          <td className="val" colSpan="3">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td>
+                          <td colSpan="4" className="transparent-cell"></td>
+                      </tr>
+                      <tr className="summary-counts-header">
+                          <td className="label">총원</td>
+                          <td className="label">지구대/파출소장</td>
+                          <td className="label" colSpan={Math.max(1, settings.teams.filter(t => t.isVisible).length)}>순찰요원(팀장 포함)</td>
+                          <td className="label">치안센터<br/>전담근무자</td>
+                          <td className="label">관리요원</td>
+                          <td className="label">사고자</td>
+                          <td className="label">장기사고자</td>
+                          <td className="label">주간<br/>전종자</td>
+                      </tr>
+                      <tr className="summary-counts-values">
+                          <td rowSpan="2">{employees.length}</td>
+                          <td rowSpan="2">{currentRoster.metadata.chief ? '1' : '0'}</td>
+                          {settings.teams.filter(t => t.isVisible).map(t => <td className="label team-name-header" key={t.name}>{t.name}</td>)}
+                          {settings.teams.filter(t => t.isVisible).length === 0 && <td className="label team-name-header"></td>}
+                          <td rowSpan="2">0</td>
+                          <td rowSpan="2">{employees.filter(e => e.isAdminStaff).length}</td>
+                          <td rowSpan="2">{absentees.filter(c => c.type !== '장기사고자').length}</td>
+                          <td rowSpan="2">{longTermAbsentees.length}</td>
+                          <td rowSpan="2">0</td>
+                      </tr>
+                      <tr className="summary-counts-values">
+                          {settings.teams.filter(t => t.isVisible).map(t => (
+                              <td key={t.name}>
+                                  {employees.filter(e => e.team === t.name && !e.isAdminStaff).length}
+                              </td>
+                          ))}
+                          {settings.teams.filter(t => t.isVisible).length === 0 && <td></td>}
+                      </tr>
+                  </tbody>
               </table>
 
               <div className="worker-section real">
                 <table className="worker-table real">
-                  <thead><tr><th colSpan="2">근 무 자</th><th colSpan="2">사 고 자</th><th colSpan="2">자원근무자</th></tr><tr className="sub-header"><th>계급</th><th>성명</th><th>성명</th><th>사유</th><th>계급</th><th>성명</th></tr></thead>
-                  <tbody>
-                    {Array.from({ length: Math.max(1, currentTeamEmployees.length, todayCasualties.length, currentRoster.volunteerStaff.length) }).map((_, i) => (
-                      <tr key={i}>
-                        <td>{currentTeamEmployees[i]?.rank || ''}</td><td>{currentTeamEmployees[i]?.name || ''}</td>
-                        <td>{employees.find(e => e.id === todayCasualties[i]?.employeeId)?.name || ''}</td><td>{todayCasualties[i]?.type || ''}</td>
-                        <td>{currentRoster.volunteerStaff[i]?.rank || ''}</td><td>{currentRoster.volunteerStaff[i]?.name || ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
+                    <thead>
+                        <tr>
+                            <th colSpan="4">근 무 자</th>
+                            <th colSpan="2">사 고 자</th>
+                            <th colSpan="2">자원근무자</th>
+                        </tr>
+                        <tr className="sub-header">
+                            <th>소속팀</th><th>조별</th><th>계급</th><th>성명</th>
+                            <th>성명</th><th>사유</th>
+                            <th>계급</th><th>성명</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {Array.from({ length: Math.max(15, currentTeamEmployees.length, absentees.length, currentRoster.volunteerStaff.length) }).map((_, i) => (
+                            <tr key={i}>
+                                {/* 근무자 */}
+                                <td>{currentTeamEmployees[i]?.team.replace('팀', '') || ''}</td>
+                                <td>{i + 1}</td>
+                                <td>{currentTeamEmployees[i]?.rank || ''}</td>
+                                <td>{currentTeamEmployees[i]?.name || ''}</td>
+                                {/* 사고자 */}
+                                <td>{employees.find(e => e.id === absentees[i]?.employeeId)?.name || ''}</td>
+                                <td>{absentees[i]?.type || ''}</td>
+                                {/* 자원근무자 */}
+                                <td>{currentRoster.volunteerStaff[i]?.rank || ''}</td>
+                                <td>{currentRoster.volunteerStaff[i]?.name || ''}</td>
+                            </tr>
+                        ))}
+                    </tbody>
                 </table>
               </div>
 
@@ -570,7 +638,7 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={specialNotes.filter(n => n.date === currentRoster.date)} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={handleToggleStaff} />
+            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={handleToggleStaff} />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
           </div>
@@ -669,23 +737,23 @@ function App({ user }) {
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('station')}><div className="title-area"><h3>지구대 정보</h3><span className="hint-text-small">명칭 및 대장 성명</span></div>{expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.station && <div className="card-content-area active"><div className="card-header-with-action">{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings({ ...settings, ...tempStationSettings }); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div><div className="info-display"><div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div><div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div></div></div>}</div>
               
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('team')}><div className="title-area"><h3>팀 관리</h3><span className="hint-text-small">팀 목록 및 노출 설정</span></div>{expandedCards.team ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.team && <div className="card-content-area active"><div className="note-form"><input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="새 팀" onKeyDown={e => e.key === 'Enter' && addTeam()} /><button className="btn-primary" onClick={addTeam}>추가</button></div><div className="duty-type-list">{settings.teams.map((t, i) => <div key={i} className="duty-type-item">
-                {editingTeamIdx === i ? <div className="edit-inline-form"><input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div></div> : <><div className="team-info-row"><button className="visibility-btn" onClick={() => {const nt=[...settings.teams]; nt[i].isVisible = !nt[i].isVisible; setSettings({...settings, teams: nt});}} title={t.isVisible ? "근무표에 표시됨" : "근무표에서 숨김"}>{t.isVisible ? <Eye size={16} /> : <EyeOff size={16} style={{color: '#ccc'}} />}</button><span>{t.name}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i); setEditingTeamValue(t.name);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, teams: settings.teams.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}
+                {editingTeamIdx === i ? <div className="edit-inline-form"><input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div></div> : <><div className="team-info-row"><button className="visibility-btn" onClick={() => {const nt=[...settings.teams]; nt[i].isVisible = !nt[i].isVisible; setSettings({...settings, teams: nt});}} title={t.isVisible ? "근무표에 표시됨" : "근무표에서 숨김"}>{t.isVisible ? <Eye size={16} /> : <EyeOff size={16} style={{color: '#ccc'}} />}</button><span>{t.name}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i); setEditingTeamValue(t.name);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, teams: settings.teams.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}\
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리</h3></div>{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item">
-                {editingFocusIdx === i ? <div className="edit-inline-form"><input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div></div> : <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i); setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, focusPlaces: settings.focusPlaces.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리</h3></div>{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item">\
+                {editingFocusIdx === i ? <div className="edit-inline-form"><input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div></div> : <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i); setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, focusPlaces: settings.focusPlaces.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}\
               </div>)}</div></div>}</div>
 
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('duty')}><div className="title-area"><h3>근무 유형 관리</h3></div>{expandedCards.duty ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.duty && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} /><select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><button className="btn-primary" onClick={addDutyType}>추가</button></div><div className="duty-type-list">{settings.dutyTypes.map((d, i) => <div key={i} className="duty-type-item">
-                {editingDutyIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus /><select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><div className="action-btns"><button className="btn-save" onClick={()=>{const nd=[...settings.dutyTypes]; nd[i]={name:editingDutyValue, shift:editingDutyShift}; setSettings({...settings, dutyTypes:nd}); setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div></div> : <><span>{d.name} ({d.shift})</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i); setEditingDutyValue(d.name); setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+                {editingDutyIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus /><select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><div className="action-btns"><button className="btn-save" onClick={()=>{const nd=[...settings.dutyTypes]; nd[i]={name:editingDutyValue, shift:editingDutyShift}; setSettings({...settings, dutyTypes:nd}); setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div></div> : <><span>{d.name} ({d.shift})</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i); setEditingDutyValue(d.name); setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}\
               </div>)}</div></div>}</div>
 
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('dayTime')}><div className="title-area"><h3>주간 시간대 관리</h3></div>{expandedCards.dayTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.dayTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDayTimeSlot} onChange={e => setNewDayTimeSlot(e.target.value)} placeholder="09:00-10:00" onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()} /><button className="btn-primary" onClick={addDayTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item">
-                {editingDayTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div></div> : <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i); setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+                {editingDayTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div></div> : <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i); setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}\
               </div>)}</div></div>}</div>
 
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('nightTime')}><div className="title-area"><h3>야간 시간대 관리</h3></div>{expandedCards.nightTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.nightTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} /><button className="btn-primary" onClick={addNightTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item">
-                {editingNightTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div></div> : <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i); setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+                {editingNightTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div></div> : <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i); setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}\
               </div>)}</div></div>}</div>
             </div>
           </div>
