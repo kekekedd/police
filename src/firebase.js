@@ -10,11 +10,12 @@ import {
   query, 
   where, 
   getDocs, 
-  updateDoc 
+  updateDoc,
+  enableIndexedDbPersistence
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
+// ... (기존 설정 유지)
 const firebaseConfig = {
   apiKey: "AIzaSyCTTnt_7Sl7vzq04wkLhlKeGWKJ7bOgOrU",
   authDomain: "watchful-idea-473105-n3.firebaseapp.com",
@@ -25,14 +26,18 @@ const firebaseConfig = {
   measurementId: "G-RG1G9RLW15"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Get a reference to the database service
 export const db = getFirestore(app);
-
-// Get a reference to the auth service
 export const auth = getAuth(app);
+
+// 오프라인 데이터 지속성 활성화
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('다중 탭이 열려 있어 캐시를 활성화할 수 없습니다.');
+    } else if (err.code === 'unimplemented') {
+        console.warn('현재 브라우저가 오프라인 캐시를 지원하지 않습니다.');
+    }
+});
 
 // Firestore helper functions
 export const getDocument = async (coll, id) => {

@@ -542,7 +542,7 @@ function App({ user }) {
     });
 
     return () => unsubRoster();
-  }, [user, currentRoster.date, currentRoster.shiftType, isLoading, employees, specialNotes]);
+  }, [user, currentRoster.date, currentRoster.shiftType, isLoading]); // employees, specialNotes 제거
 
   // 설정 자동 저장 (로딩이 확실히 끝난 후에만 실행되도록 보호)
   useEffect(() => {
