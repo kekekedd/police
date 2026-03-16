@@ -65,7 +65,7 @@ const getRankWeight = (rank) => {
   return index === -1 ? 99 : index;
 };
 
-function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, settings, onSelect }) {
+function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, settings, onSelect, onDeleteVolunteer }) {
   const [activeTeamTab, setActiveTeamTab] = useState('');
   useEffect(() => {
     if (isOpen && settings?.teams?.length > 0 && !activeTeamTab) {
@@ -105,9 +105,18 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
             const isBlocked = !availability.available || (otherDutyName && !isSelected);
             const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
             return (
-              <div key={emp.id} className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isBlocked && !isSelected ? 'disabled' : ''}`} onClick={() => (!isBlocked || isSelected) && onSelect(emp.id)}>
+              <div key={emp.id} className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isBlocked && !isSelected ? 'disabled' : ''}`} onClick={() => (!isBlocked || isSelected) && onSelect(emp.id)} style={{ position: 'relative' }}>
                 <div className="staff-rank">{emp.rank}</div>
                 <div className="staff-name">{emp.name}</div>
+                {emp.isVolunteer && (
+                  <button 
+                    className="delete-btn-tiny" 
+                    onClick={(e) => { e.stopPropagation(); if(window.confirm('이 자원근무자를 삭제하시겠습니까?')) onDeleteVolunteer(emp.id); }}
+                    style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(255,0,0,0.1)', border: 'none', borderRadius: '4px', padding: '2px', cursor: 'pointer', color: '#ff4444' }}
+                  >
+                    <Trash size={12} />
+                  </button>
+                )}
                 {emp.isAdminStaff && <div className="staff-note-label admin">관리반</div>}
                 {note && <div className={`staff-note-label ${note.type}`}>{note.type}</div>}
                 {otherDutyName && !note && <div className="staff-note-label warning">{otherDutyName}</div>}
@@ -403,6 +412,20 @@ function App({ user }) {
       const currentIds = prev.assignments[key] || [];
       if (currentIds.includes(id)) return { ...prev, assignments: { ...prev.assignments, [key]: currentIds.filter(i => i !== id) } };
       return { ...prev, assignments: { ...prev.assignments, [key]: [...currentIds, id] } };
+    });
+  };
+
+  const handleDeleteVolunteer = (id) => {
+    setCurrentRoster(prev => {
+      const newAssignments = { ...prev.assignments };
+      Object.keys(newAssignments).forEach(key => {
+        newAssignments[key] = (newAssignments[key] || []).filter(vId => vId !== id);
+      });
+      return {
+        ...prev,
+        volunteerStaff: (prev.volunteerStaff || []).filter(v => v.id !== id),
+        assignments: newAssignments
+      };
     });
   };
 
@@ -702,7 +725,7 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} settings={settings} onSelect={handleToggleStaff} />
+            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} settings={settings} onSelect={handleToggleStaff} onDeleteVolunteer={handleDeleteVolunteer} />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
           </div>
