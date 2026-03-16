@@ -298,7 +298,7 @@ function App({ user }) {
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
-    metadata: { chief: '', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0 },
+    metadata: { chief: '', chiefStatus: '근무', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0 },
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
 
@@ -458,7 +458,16 @@ function App({ user }) {
               <div className="header-card"><label><Calendar size={14} /> 날짜</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
               <div className="header-card"><label>구분</label><div className="toggle-buttons"><button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button><button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button></div></div>
               <div className="header-card"><label>팀명 선택</label><div className="btn-group">{settings.teams.map(team => <button key={team} className={`selection-btn ${currentRoster.metadata.teamName === team ? 'active' : ''}`} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team}})}>{team}</button>)}</div></div>
-              <div className="header-card"><label>지구대장</label><input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
+              <div className="header-card">
+                <label>지구대장</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input style={{ flex: 2 }} type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
+                  <div className="toggle-buttons" style={{ flex: 1.5 }}>
+                    <button className={currentRoster.metadata.chiefStatus === '근무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '근무'}})}>근무</button>
+                    <button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '휴무'}})}>휴무</button>
+                  </div>
+                </div>
+              </div>
               <div className="header-card"><label>순찰팀장</label><input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
               <div className="header-actions"><button className="btn-secondary" onClick={() => alert('이전 데이터를 필요로 합니다.')} disabled={currentRoster.shiftType !== '야간'}><RefreshCw size={16} /> 자동 순번</button><button className="btn-outline" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button><button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button></div>
             </div>
@@ -468,7 +477,7 @@ function App({ user }) {
               <table className="summary-table real">
                 <tbody>
                   <tr><td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td><td className="label">날 씨</td><td colSpan="3" className="val">{currentRoster.weather}</td></tr>
-                  <tr><td className="label">지구대장</td><td colSpan="3" className="val">{currentRoster.metadata.chief}</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
+                  <tr><td className="label">지구대장</td><td colSpan="3" className="val">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
                   <tr className="summary-counts"><td className="label">총원</td><td className="label">소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">전종자</td></tr>
                   <tr className="summary-values"><td>{currentRoster.metadata.totalCount}</td><td>1</td><td colSpan="3">{Object.entries(currentRoster.metadata.teamCounts).map(([t, c]) => <span key={t}>{t}({c}) </span>)}</td><td>{assignedAdminCount}</td><td>{casualties.length}</td><td>0</td></tr>
                 </tbody>
