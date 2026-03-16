@@ -454,7 +454,7 @@ function App({ user }) {
     const qEmployees = query(collection(db, 'employees'), where('userId', '==', user.uid));
     const unsubEmployees = onSnapshot(qEmployees, (snapshot) => {
       const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setEmployees(staffList.length > 0 ? staffList : INITIAL_EMPLOYEES);
+      setEmployees(staffList);
       setIsLoading(false);
     }, (error) => {
       console.error("Employees sync error:", error);
@@ -517,7 +517,9 @@ function App({ user }) {
   }, [user, currentRoster.date, currentRoster.shiftType, isLoading, employees, specialNotes]);
 
   useEffect(() => {
-    if (user && !isLoading) { saveDocument('settings', user.uid, settings); }
+    if (user && !isLoading) { 
+      saveDocument('settings', user.uid, { ...settings, userId: user.uid }); 
+    }
   }, [settings, isLoading, user]);
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
