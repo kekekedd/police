@@ -444,19 +444,62 @@ function App({ user }) {
       <main>
         {activeTab === 'roster' && (
           <div className="roster-view">
-            <div className="roster-header-combined-card no-print">
-              <div className="combined-box">
-                <div className="input-item"><label><Calendar size={14} /> 날짜</label><input type="date" value={currentRoster.date} onChange={e => { setCurrentRoster({...currentRoster, date: e.target.value}); }} /></div>
-                <div className="divider-v"></div>
-                <div className="input-item"><label>근무 구분</label><div className="toggle-buttons mini"><button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button><button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button></div></div>
-                <div className="divider-v"></div>
-                <div className="input-item flex-grow"><label>팀 선택 (설정에서 관리)</label><div className="btn-group">{settings.teams.filter(t => t.isVisible).map(team => <button key={team.name} className={`selection-btn ${currentRoster.metadata.teamName === team.name ? 'active' : ''}`} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team.name}})}>{team.name}</button>)}</div></div>
+            <div className="roster-header-inputs no-print">
+              <div className="header-card">
+                <label><Calendar size={14} /> 날짜</label>
+                <input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} />
               </div>
-              <div className="combined-box-sub">
-                <div className="input-item"><label>지구대장</label><div style={{ display: 'flex', gap: '0.5rem' }}><input type="text" placeholder="성명" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /><div className="toggle-buttons mini"><button className={currentRoster.metadata.chiefStatus === '일근' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '일근'}})}>일근</button><button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '휴무'}})}>휴무</button></div></div></div>
-                <div className="input-item"><label>순찰팀장</label><input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
-                <div className="input-item"><label>오늘 날씨</label><div className="btn-group">{WEATHER_TYPES.map(w => <button key={w} className={`selection-btn mini ${currentRoster.weather === w ? 'active' : ''}`} onClick={() => setCurrentRoster({...currentRoster, weather: w})}>{w}</button>)}</div></div>
-                <div className="actions-right"><button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button></div>
+              <div className="header-card">
+                <label>근무 구분</label>
+                <div className="toggle-buttons">
+                  <button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button>
+                  <button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button>
+                </div>
+              </div>
+              <div className="header-card">
+                <label>팀 선택</label>
+                <div className="btn-group">
+                  {settings.teams.filter(t => t.isVisible).map(team => (
+                    <button 
+                      key={team.name} 
+                      className={`selection-btn ${currentRoster.metadata.teamName === team.name ? 'active' : ''}`}
+                      onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team.name}})}
+                    >
+                      {team.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="header-card">
+                <label>날씨</label>
+                <div className="btn-group">
+                  {WEATHER_TYPES.map(w => (
+                    <button 
+                      key={w} 
+                      className={`selection-btn ${currentRoster.weather === w ? 'active' : ''}`}
+                      onClick={() => setCurrentRoster({...currentRoster, weather: w})}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="header-card">
+                <label>지구대/파출소장</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
+                  <div className="toggle-buttons">
+                    <button className={currentRoster.metadata.chiefStatus === '일근' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '일근'}})}>일근</button>
+                    <button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '휴무'}})}>휴무</button>
+                  </div>
+                </div>
+              </div>
+              <div className="header-card">
+                <label>순찰팀장</label>
+                <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} />
+              </div>
+              <div className="header-actions">
+                <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>
             </div>
 
