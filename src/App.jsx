@@ -573,7 +573,15 @@ function App({ user }) {
     try { await saveDocument('employees', data.id, staffWithUser); setEmployees([...employees, staffWithUser].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank))); setIsAddingEmployee(false); } catch (e) { alert('추가 실패'); }
   };
 
-  const updateEmployee = async (updated) => { try { await saveDocument('employees', updated.id, updated); setEmployees(employees.map(e => e.id === updated.id ? updated : e)); setEditingEmployee(null); } catch (e) { alert('수정 실패'); } };
+  const updateEmployee = async (updated) => { 
+    setEditingEmployee(null); 
+    try { 
+      await saveDocument('employees', updated.id, updated); 
+      setEmployees(employees.map(e => e.id === updated.id ? updated : e)); 
+    } catch (e) { 
+      alert('수정 실패'); 
+    } 
+  };
 
   const deleteEmployee = async (id) => { if (window.confirm('정말 삭제하시겠습니까?')) { try { await removeDocument('employees', id); setEmployees(employees.filter(e => e.id !== id)); setSpecialNotes(specialNotes.filter(n => n.employeeId !== id)); setEditingEmployee(null); } catch (e) { alert('삭제 실패'); } } };
 
