@@ -157,9 +157,45 @@ function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
           <button onClick={onClose} className="close-btn"><X size={20} /></button>
         </div>
         <div className="modal-body edit-form">
-          <div className="input-group"><label>계급</label><select value={newEmp.rank} onChange={e => setNewEmp({ ...newEmp, rank: e.target.value })}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-          <div className="input-group"><label>성명</label><input type="text" placeholder="성명 입력" value={newEmp.name} onChange={e => setNewEmp({ ...newEmp, name: e.target.value })} /></div>
-          <div className="input-group"><label>팀</label><select value={newEmp.team} onChange={e => setNewEmp({ ...newEmp, team: e.target.value })}>{settings.teams.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div className="input-group">
+            <label>계급</label>
+            <div className="btn-group">
+              {RANKS.map(r => (
+                <button 
+                  key={r} 
+                  className={`selection-btn ${newEmp.rank === r ? 'active' : ''}`}
+                  onClick={() => setNewEmp({ ...newEmp, rank: r })}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="input-group">
+            <label>성명</label>
+            <input 
+              type="text" 
+              placeholder="성명 입력" 
+              value={newEmp.name} 
+              onChange={e => setNewEmp({ ...newEmp, name: e.target.value })}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              autoFocus
+            />
+          </div>
+          <div className="input-group">
+            <label>팀</label>
+            <div className="btn-group">
+              {settings.teams.map(t => (
+                <button 
+                  key={t} 
+                  className={`selection-btn ${newEmp.team === t ? 'active' : ''}`}
+                  onClick={() => setNewEmp({ ...newEmp, team: t })}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="checkbox-list">
             <label className="checkbox-item"><input type="checkbox" checked={newEmp.isStandbyRotationEligible} onChange={e => setNewEmp({ ...newEmp, isStandbyRotationEligible: e.target.checked })} />순환대상 여부</label>
             <label className="checkbox-item"><input type="checkbox" checked={newEmp.isFixedNightStandby} onChange={e => setNewEmp({ ...newEmp, isFixedNightStandby: e.target.checked })} />고정 대기 여부</label>
@@ -222,9 +258,43 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
           <button onClick={onClose} className="close-btn"><X size={20} /></button>
         </div>
         <div className="modal-body edit-form">
-          <div className="input-group"><label>계급</label><select value={edited.rank} onChange={e => setEdited({ ...edited, rank: e.target.value })}>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-          <div className="input-group"><label>성명</label><input type="text" value={edited.name} onChange={e => setEdited({ ...edited, name: e.target.value })} /></div>
-          <div className="input-group"><label>팀</label><select value={edited.team} onChange={e => setEdited({ ...edited, team: e.target.value })}>{settings.teams.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div className="input-group">
+            <label>계급</label>
+            <div className="btn-group">
+              {RANKS.map(r => (
+                <button 
+                  key={r} 
+                  className={`selection-btn ${edited.rank === r ? 'active' : ''}`}
+                  onClick={() => setEdited({ ...edited, rank: r })}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="input-group">
+            <label>성명</label>
+            <input 
+              type="text" 
+              value={edited.name} 
+              onChange={e => setEdited({ ...edited, name: e.target.value })}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+            />
+          </div>
+          <div className="input-group">
+            <label>팀</label>
+            <div className="btn-group">
+              {settings.teams.map(t => (
+                <button 
+                  key={t} 
+                  className={`selection-btn ${edited.team === t ? 'active' : ''}`}
+                  onClick={() => setEdited({ ...edited, team: t })}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="checkbox-list">
             <label className="checkbox-item"><input type="checkbox" checked={edited.isStandbyRotationEligible} onChange={e => setEdited({ ...edited, isStandbyRotationEligible: e.target.checked })} />순환대상 여부</label>
             <label className="checkbox-item"><input type="checkbox" checked={edited.isFixedNightStandby} onChange={e => setEdited({ ...edited, isFixedNightStandby: e.target.checked })} />고정 대기 여부</label>

@@ -1078,10 +1078,35 @@ tr.dragging {
   white-space: nowrap;
 }
 
-.disabled-input {
-  background-color: #f5f5f5 !important;
-  color: #999 !important;
-  cursor: not-allowed;
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.selection-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.selection-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.selection-btn.active {
+  background: #1a237e;
+  color: white;
+  border-color: #1a237e;
+  box-shadow: 0 2px 4px rgba(26, 35, 126, 0.2);
 }
 
 .print-select {
