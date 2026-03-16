@@ -579,7 +579,45 @@ function App({ user }) {
         {activeTab === 'employees' && (
           <div className="admin-section">
             <div className="section-header-with-action"><h2>직원 명단 관리</h2><div className="action-btns"><button className={`btn-edit-mode ${isAddingEmployee ? 'active' : ''}`} onClick={() => setIsAddingEmployee(!isAddingEmployee)}>{isAddingEmployee ? <><X size={16} /> 취소</> : <><Plus size={16} /> 추가</>}</button><button className={`btn-edit-mode ${isStaffOrderEditMode ? 'active' : ''}`} onClick={() => setIsStaffOrderEditMode(!isStaffOrderEditMode)}>{isStaffOrderEditMode ? <><Save size={16} /> 완료</> : <><Edit2 size={16} /> 편집</>}</button></div></div>
-            <div className="stats-dashboard"><div className="stats-card-v3"><h4>팀별 인원</h4><div className="stats-grid-mini">{settings.teams.map(team => <div key={team.name} className="stats-item-mini"><span className="stats-label">{team.name}</span><span className="stats-value">{employees.filter(e => e.team === team.name).length}명</span></div>)}<div className="stats-item-mini total"><span className="stats-label">합계</span><span className="stats-value">{employees.length}명</span></div></div></div><div className="stats-card-v3"><h4>계급별 인원</h4><div className="stats-grid-mini">{RANKS.map(rank => employees.filter(e => e.rank === rank).length > 0 && <div key={rank} className="stats-item-mini"><span className="stats-label">{rank}</span><span className="stats-value">{employees.filter(e => e.rank === rank).length}명</span></div>)}</div></div></div>
+            <div className="stats-dashboard">
+              <div className="stats-card-v3">
+                <h4>팀별 순찰요원</h4>
+                <div className="stats-grid-mini">
+                  {settings.teams.map(team => {
+                    const patrolCount = employees.filter(e => e.team === team.name && !e.isAdminStaff).length;
+                    return (
+                      <div key={team.name} className="stats-item-mini">
+                        <span className="stats-label">{team.name}</span>
+                        <span className="stats-value">{patrolCount}명</span>
+                      </div>
+                    );
+                  })}
+                  <div className="stats-item-mini total">
+                    <span className="stats-label">순찰 합계</span>
+                    <span className="stats-value">{employees.filter(e => !e.isAdminStaff).length}명</span>
+                  </div>
+                </div>
+              </div>
+              <div className="stats-card-v3">
+                <h4>계급별/관리반 현황</h4>
+                <div className="stats-grid-mini">
+                  <div className="stats-item-mini admin-total">
+                    <span className="stats-label">관리반 총원</span>
+                    <span className="stats-value">{employees.filter(e => e.isAdminStaff).length}명</span>
+                  </div>
+                  {RANKS.map(rank => {
+                    const count = employees.filter(e => e.rank === rank).length;
+                    if (count === 0) return null;
+                    return (
+                      <div key={rank} className="stats-item-mini">
+                        <span className="stats-label">{rank}</span>
+                        <span className="stats-value">{count}명</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
             <div className="team-filter-tabs">{settings.teams.map(team => <button key={team.name} className={`team-tab-btn ${employeeTabTeam === team.name ? 'active' : ''}`} onClick={() => setEmployeeTabTeam(team.name)}>{team.name}</button>)}</div>
             <table className="admin-table interactive">
               <thead><tr>{isStaffOrderEditMode && <th></th>}<th>계급</th><th>성명</th><th>팀</th><th>고정대기</th><th>야간제외</th><th>관리반</th>{isStaffOrderEditMode && <th>작업</th>}</tr></thead>
