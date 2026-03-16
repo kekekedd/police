@@ -65,15 +65,35 @@ const getRankWeight = (rank) => {
   return index === -1 ? 99 : index;
 };
 
-function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, onSelect }) {
+function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, settings, onSelect }) {
+  const [activeTeamTab, setActiveTeamTab] = useState('');
+  useEffect(() => {
+    if (isOpen && settings?.teams?.length > 0 && !activeTeamTab) {
+      setActiveTeamTab(settings.teams[0].name);
+    }
+  }, [isOpen, settings, activeTeamTab]);
+
   if (!isOpen) return null;
   const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  const filteredEmployees = activeTeamTab === '자원' 
+    ? sortedEmployees.filter(e => e.isVolunteer)
+    : sortedEmployees.filter(e => e.team === activeTeamTab && !e.isVolunteer);
+
   return (
     <div className="modal-overlay no-print">
-      <div className="modal-content selection-modal">
-        <div className="modal-header"><h3>직원 선택 ({duty} / {slot})</h3><button onClick={onClose} className="close-btn"><X size={20} /></button></div>
-        <div className="staff-grid scrollable">
-          {sortedEmployees.map(emp => {
+      <div className="modal-content selection-modal large">
+        <div className="modal-header">
+          <h3>직원 선택 ({duty} / {slot})</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="team-filter-tabs-mini modal-tabs">
+          {settings?.teams?.map(t => (
+            <button key={t.name} className={`team-tab-btn-mini ${activeTeamTab === t.name ? 'active' : ''}`} onClick={() => setActiveTeamTab(t.name)}>{t.name}</button>
+          ))}
+          <button className={`team-tab-btn-mini ${activeTeamTab === '자원' ? 'active' : ''}`} onClick={() => setActiveTeamTab('자원')}>자원근무자</button>
+        </div>
+        <div className="staff-grid scrollable modal-staff-grid">
+          {filteredEmployees.map(emp => {
             const [s, e] = slot.split('-');
             const availability = checkAvailability(emp, s, e, specialNotes);
             const isSelected = selectedIds.includes(emp.id);
@@ -94,6 +114,7 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
               </div>
             );
           })}
+          {filteredEmployees.length === 0 && <div className="empty-selection-placeholder">해당 팀에 등록된 직원이 없습니다.</div>}
         </div>
         <div className="modal-footer"><button className="btn-primary" onClick={onClose}>확인</button></div>
       </div>
@@ -456,8 +477,8 @@ function App({ user }) {
   const stationLongTermCount = stationAllDayNotes.length;
   const stationAbsenteeCount = stationPartialNotes.length;
 
-  // 근무표용: 현재 팀 직원 대상 종일 특이사항 (사고자 명단에 표시)
-  const teamAllDayAbsentees = stationAllDayNotes.filter(n => 
+  // 근무표용: 현재 팀 직원 대상 모든 특이사항 (사고자 명단에 표시)
+  const teamAbsentees = todaysNotes.filter(n => 
     employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
   );
   
@@ -545,14 +566,20 @@ function App({ user }) {
                 <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} />
               </div>
               <div className="header-card">
-                <label>치안센터 전담</label>
-                <input type="number" value={currentRoster.metadata.dedicatedCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dedicatedCount: parseInt(e.target.value) || 0}})} />
-              </div>
-              <div className="header-card">
-                <label>주간 전종자</label>
-                <input type="number" value={currentRoster.metadata.dayShiftOnlyCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dayShiftOnlyCount: parseInt(e.target.value) || 0}})} />
+                <label>특수 인원 관리</label>
+                <div className="input-row-mini">
+                  <div className="input-col-mini" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '0.65rem', color: '#666' }}>치안센터</span>
+                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dedicatedCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dedicatedCount: parseInt(e.target.value) || 0}})} />
+                  </div>
+                  <div className="input-col-mini" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '0.65rem', color: '#666' }}>주간전종</span>
+                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dayShiftOnlyCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dayShiftOnlyCount: parseInt(e.target.value) || 0}})} />
+                  </div>
+                </div>
               </div>
               <div className="header-actions">
+                <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
                 <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>
             </div>
@@ -629,7 +656,7 @@ function App({ user }) {
                         {Array.from({ length: 10 }).map((_, i) => {
                             const leftEmp = currentTeamEmployees[i];
                             const rightEmp = currentTeamEmployees[i + 10];
-                            const absentee = teamAllDayAbsentees[i];
+                            const absentee = teamAbsentees[i];
                             const absenteeEmp = absentee ? employees.find(e => e.id === absentee.employeeId) : null;
                             const volunteer = currentRoster.volunteerStaff && currentRoster.volunteerStaff[i];
                             return (
@@ -675,7 +702,7 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={handleToggleStaff} />
+            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} settings={settings} onSelect={handleToggleStaff} />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
           </div>
