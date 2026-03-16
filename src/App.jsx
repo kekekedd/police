@@ -290,7 +290,7 @@ function App({ user }) {
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
-    metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0 },
+    metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0, dedicatedCount: 0, dayShiftOnlyCount: 0 },
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
 
@@ -483,7 +483,7 @@ function App({ user }) {
           <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
           <button onClick={() => setActiveTab('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
           <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'active' : ''}><Settings size={16} /> 환경 설정</button>
-          <button onClick={() => auth.signOut()} style={{ background: '#455a64', color: 'white', borderRadius: '8px', padding: '0.5rem 1rem', marginLeft: '1rem' }}>로그아웃</button>
+          <button onClick={() => { if(window.confirm('로그아웃 하시겠습니까?')) auth.signOut(); }} style={{ background: '#455a64', color: 'white', borderRadius: '8px', padding: '0.5rem 1rem', marginLeft: '1rem' }}>로그아웃</button>
         </nav>
       </header>
 
@@ -544,6 +544,14 @@ function App({ user }) {
                 <label>순찰팀장</label>
                 <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} />
               </div>
+              <div className="header-card">
+                <label>치안센터 전담</label>
+                <input type="number" value={currentRoster.metadata.dedicatedCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dedicatedCount: parseInt(e.target.value) || 0}})} />
+              </div>
+              <div className="header-card">
+                <label>주간 전종자</label>
+                <input type="number" value={currentRoster.metadata.dayShiftOnlyCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dayShiftOnlyCount: parseInt(e.target.value) || 0}})} />
+              </div>
               <div className="header-actions">
                 <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>
@@ -573,25 +581,28 @@ function App({ user }) {
                           <td className="label" colSpan={Math.max(1, settings.teams.filter(t => t.isVisible).length)}>순찰요원(팀장 포함)</td>
                           <td className="label">치안센터<br/>전담근무자</td>
                           <td className="label">관리요원</td>
-                          <td className="label">사고자</td>
                           <td className="label">장기사고자</td>
                           <td className="label">주간<br/>전종자</td>
                       </tr>
                       <tr className="summary-counts-values">
-                          <td rowSpan="2">{employees.length}</td>
+                          <td rowSpan="2">
+                              {(currentRoster.metadata.chief ? 1 : 0) + 
+                               employees.length + 
+                               (currentRoster.metadata.dedicatedCount || 0) + 
+                               (currentRoster.metadata.dayShiftOnlyCount || 0)}
+                          </td>
                           <td rowSpan="2">{currentRoster.metadata.chief ? '1' : '0'}</td>
                           {settings.teams.filter(t => t.isVisible).map(t => <td className="label team-name-header" key={t.name}>{t.name}</td>)}
                           {settings.teams.filter(t => t.isVisible).length === 0 && <td className="label team-name-header"></td>}
-                          <td rowSpan="2">0</td>
+                          <td rowSpan="2">{currentRoster.metadata.dedicatedCount || 0}</td>
                           <td rowSpan="2">{employees.filter(e => e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id)).length}</td>
-                          <td rowSpan="2">{stationAbsenteeCount}</td>
                           <td rowSpan="2">{stationLongTermCount}</td>
-                          <td rowSpan="2">0</td>
+                          <td rowSpan="2">{currentRoster.metadata.dayShiftOnlyCount || 0}</td>
                       </tr>
                       <tr className="summary-counts-values">
                           {settings.teams.filter(t => t.isVisible).map(t => (
                               <td key={t.name}>
-                                  {employees.filter(e => e.team === t.name && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id)).length}
+                                  {employees.filter(e => e.team === t.name && !e.isAdminStaff).length}
                               </td>
                           ))}
                           {settings.teams.filter(t => t.isVisible).length === 0 && <td></td>}
