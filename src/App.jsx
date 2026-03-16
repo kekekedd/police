@@ -727,8 +727,18 @@ function App({ user }) {
                 </div>
               </div>
               <div className="header-card">
-                <label>팀명</label>
-                <input type="text" placeholder="예: 2팀" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} />
+                <label>팀명 선택</label>
+                <div className="btn-group">
+                  {settings.teams.map(team => (
+                    <button 
+                      key={team} 
+                      className={`selection-btn ${currentRoster.metadata.teamName === team ? 'active' : ''}`}
+                      onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team}})}
+                    >
+                      {team}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="header-card">
                 <label>지구대장</label>
