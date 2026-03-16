@@ -63,75 +63,69 @@ main {
 
 .roster-header-inputs {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 2rem;
-  align-items: flex-end;
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.input-group {
+.header-card {
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 160px;
+  flex: 1;
+  border: 1px solid #edf2f7;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.input-group label {
-  font-size: 0.875rem;
-  font-weight: bold;
-  color: #555;
+.header-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.08);
 }
 
-.roster-header-inputs .input-group input {
-  padding: 0.4rem 0.8rem;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  background-color: #f8f9fa;
-  transition: all 0.2s;
-  height: 36px;
-  color: #333;
-}
-
-.roster-header-inputs .input-group input:hover {
-  border-color: #ccc;
-}
-
-.roster-header-inputs .input-group input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  background-color: white;
-  box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1);
-}
-
-.team-name-input { width: 80px; }
-.chief-name-input, .leader-name-input { width: 100px; }
-
-.toggle-buttons {
+.header-card label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   display: flex;
-  background: #eee;
-  padding: 2px;
-  border-radius: 6px;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.toggle-buttons button {
-  padding: 0.4rem 1rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  font-weight: bold;
-  color: #666;
-  transition: all 0.2s;
+.header-card input, .header-card .toggle-buttons {
+  border: none !important;
+  background: #f7fafc !important;
+  padding: 0.6rem !important;
+  border-radius: 8px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #2d3748 !important;
+  width: 100% !important;
+  outline: none !important;
+  transition: background 0.2s !important;
+  height: auto !important;
 }
 
-.toggle-buttons button.active {
-  background: white;
-  color: var(--primary-color);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.header-card input:focus {
+  background: #edf2f7 !important;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .checkbox-list {
@@ -313,7 +307,7 @@ main {
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-/* Focus Areas styling */
+/* Focus Areas styling - Refined */
 .focus-cell {
   padding: 0 !important;
   text-align: center;
@@ -321,19 +315,25 @@ main {
 
 .focus-cell .staff-name-v {
   width: 100%;
-  text-align: center;
-  background-color: transparent;
-  color: #333;
-  border: none;
-  box-shadow: none;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent !important;
+  color: #1a237e;
+  border: none !important;
+  box-shadow: none !important;
   margin: 0;
-  padding: 0;
+  padding: 4px;
   font-weight: bold;
+  font-size: 0.8rem;
+  min-height: 42px;
 }
 
 .focus-row td {
-  background-color: #f5f5f5;
+  background-color: #f1f5f9;
 }
+
 
 /* Admin Styles */
 .admin-section {

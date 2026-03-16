@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, GripVertical } from 'lucide-react';
-import { isTimeOverlapping, checkAvailability, rotateStandbyGroups } from './utils/rotation';
-import { auth, db, saveDocument, getDocument, getCollection, removeDocument } from './firebase';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2 } from 'lucide-react';
+import { isTimeOverlapping, checkAvailability } from './utils/rotation';
+import { auth, saveDocument, getDocument, getCollection, removeDocument } from './firebase';
 import './App.css';
 
 const INITIAL_EMPLOYEES = [
@@ -52,8 +51,8 @@ const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
 const WEATHER_TYPES = ["맑음", "흐림", "비", "눈", "안개", "황사"];
 
 const DEFAULT_SETTINGS = {
-  stationName: '신사지구대',
-  chiefName: '이이식',
+  stationName: '○○ 지구대',
+  chiefName: '',
   dutyTypes: DEFAULT_DUTY_TYPES,
   teams: ['1팀', '2팀', '3팀', '4팀'],
   focusPlaces: ['신사역', '논현역', '학동역', '압구정역', '가로수길', '도산공원', '신사상가', '잠원한강공원', '을지병원사거리'],
@@ -338,6 +337,7 @@ function App({ user }) {
   const [newNightTimeSlot, setNewNightTimeSlot] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
   const [newFocusPlace, setNewFocusPlace] = useState('');
+  
   const [editingDutyIdx, setEditingDutyIdx] = useState(null);
   const [editingDutyValue, setEditingDutyValue] = useState('');
   const [editingDutyShift, setEditingDutyShift] = useState('공통');
@@ -442,28 +442,28 @@ function App({ user }) {
   };
 
   const handleSave = async () => {
-    const user = auth.currentUser;
-    if (!user) return alert('로그인이 필요합니다.');
+    const currentUser = auth.currentUser;
+    if (!currentUser) return alert('로그인이 필요합니다.');
     try {
-      const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
-      await saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() });
+      const rosterId = `${currentUser.uid}_${currentRoster.date}_${currentRoster.shiftType}`;
+      await saveDocument('rosters', rosterId, { ...currentRoster, userId: currentUser.uid, updatedAt: new Date().toISOString() });
       alert('저장되었습니다.');
     } catch (e) { alert('저장 실패'); }
   };
 
   const addNote = async () => {
     if (!newNote.employeeId || !newNote.date) return alert('직원과 날짜를 선택하세요.');
-    const user = auth.currentUser;
+    const currentUser = auth.currentUser;
     const noteId = Date.now().toString();
-    const noteData = { ...newNote, id: noteId, userId: user.uid };
+    const noteData = { ...newNote, id: noteId, userId: currentUser.uid };
     try { await saveDocument('specialNotes', noteId, noteData); setSpecialNotes([...specialNotes, noteData]); setNewNote({ ...newNote, employeeId: '', type: '육아시간', isAllDay: false }); } catch (e) { alert('저장 실패'); }
   };
 
   const deleteNote = async (id) => { try { await removeDocument('specialNotes', id); setSpecialNotes(specialNotes.filter(n => n.id !== id)); } catch (e) { alert('삭제 실패'); } };
 
   const addEmployee = async (data) => {
-    const user = auth.currentUser;
-    const staffWithUser = { ...data, userId: user.uid };
+    const currentUser = auth.currentUser;
+    const staffWithUser = { ...data, userId: currentUser.uid };
     try { await saveDocument('employees', data.id, staffWithUser); setEmployees([...employees, staffWithUser].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank))); setIsAddingEmployee(false); } catch (e) { alert('추가 실패'); }
   };
 
@@ -474,7 +474,6 @@ function App({ user }) {
   const handleDragStart = (idx) => setDraggedIdx(idx);
   const handleDragOver = (e) => e.preventDefault();
   const handleDrop = (targetIdx, list, setList) => { if (draggedIdx === null || draggedIdx === targetIdx) return; const newList = [...list]; const item = newList.splice(draggedIdx, 1)[0]; newList.splice(targetIdx, 0, item); setList(newList); setDraggedIdx(null); };
-  const handleSettingsDrop = (targetIdx, key) => { if (draggedIdx === null || draggedIdx === targetIdx) return; const list = [...(settings[key] || [])]; const item = list.splice(draggedIdx, 1)[0]; list.splice(targetIdx, 0, item); setSettings({ ...settings, [key]: list }); setDraggedIdx(null); };
 
   const addTeam = () => { if (!newTeamName) return; if (settings.teams?.includes(newTeamName)) return alert('이미 존재합니다.'); setSettings({ ...settings, teams: [...(settings.teams || []), newTeamName] }); setNewTeamName(''); };
   const addFocusPlace = () => { if (!newFocusPlace) return; if (settings.focusPlaces?.includes(newFocusPlace)) return alert('이미 존재합니다.'); setSettings({ ...settings, focusPlaces: [...(settings.focusPlaces || []), newFocusPlace] }); setNewFocusPlace(''); };
@@ -504,7 +503,7 @@ function App({ user }) {
           <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
           <button onClick={() => setActiveTab('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
           <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'active' : ''}><Settings size={16} /> 환경 설정</button>
-          <button onClick={() => auth.signOut()} style={{ background: '#455a64', color: 'white' }}>로그아웃</button>
+          <button onClick={() => auth.signOut()} style={{ background: '#455a64', color: 'white', borderRadius: '8px', padding: '0.5rem 1rem', marginLeft: '1rem' }}>로그아웃</button>
         </nav>
       </header>
 
@@ -512,21 +511,35 @@ function App({ user }) {
         {activeTab === 'roster' && (
           <div className="roster-view">
             <div className="roster-header-inputs no-print">
-              <div className="input-group"><label><Calendar size={16} /> 날짜</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
-              <div className="input-group">
+              <div className="header-card">
+                <label><Calendar size={14} /> 날짜</label>
+                <input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} />
+              </div>
+              <div className="header-card">
                 <label>구분</label>
                 <div className="toggle-buttons">
                   <button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button>
                   <button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button>
                 </div>
               </div>
-              <div className="input-group"><label>팀명</label><input type="text" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} /></div>
-              <div className="input-group"><label>지구대장</label><input type="text" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} /></div>
-              <div className="input-group"><label>순찰팀장</label><input type="text" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} /></div>
-              <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'}><RefreshCw size={16} /> 자동 순번</button>
-              <button className="btn-outline" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
-              <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
-              <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
+              <div className="header-card">
+                <label>팀명</label>
+                <input type="text" placeholder="예: 2팀" value={currentRoster.metadata.teamName} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: e.target.value}})} />
+              </div>
+              <div className="header-card">
+                <label>지구대장</label>
+                <input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
+              </div>
+              <div className="header-card">
+                <label>순찰팀장</label>
+                <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} />
+              </div>
+              <div className="header-actions">
+                <button className="btn-secondary" onClick={handleNextNightGenerate} disabled={currentRoster.shiftType !== '야간'}><RefreshCw size={16} /> 자동 순번</button>
+                <button className="btn-outline" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
+                <button className="btn-primary" onClick={handleSave}><Save size={16} /> 저장</button>
+                <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
+              </div>
             </div>
 
             <div className="print-area real-style">
@@ -561,7 +574,7 @@ function App({ user }) {
                       <td className="duty-label">{dutyObj.name}</td>
                       {currentTimeSlots.map(slot => {
                         const key = `${slot}_${dutyObj.name}`;
-                        if (dutyObj.name.includes('중점')) return <td key={slot} className="assignment-cell" onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div></td>;
+                        if (dutyObj.name.includes('중점')) return <td key={slot} className="assignment-cell focus-cell" onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div></td>;
                         const staff = (currentRoster.assignments[key] || []).map(id => [...employees, ...(currentRoster.volunteerStaff || [])].find(e => e.id === id)).filter(Boolean);
                         return <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div></td>;
                       })}
@@ -583,9 +596,9 @@ function App({ user }) {
             <table className="admin-table interactive">
               <thead><tr>{isStaffOrderEditMode && <th></th>}<th>계급</th><th>성명</th><th>팀</th><th>고정대기</th><th>야간제외</th>{isStaffOrderEditMode && <th>작업</th>}</tr></thead>
               <tbody>
-                {employees.filter(e => e.team === employeeTabTeam).map((emp, i) => (
+                {employees.filter(e => e.team === employeeTabTeam).map((emp) => (
                   <tr key={emp.id} draggable={isStaffOrderEditMode} onDragStart={() => handleDragStart(employees.indexOf(emp))} onDragOver={handleDragOver} onDrop={() => handleDrop(employees.indexOf(emp), employees, setEmployees)}>
-                    {isStaffOrderEditMode && <td className="drag-handle"><GripVertical size={16} /></td>}
+                    {isStaffOrderEditMode && <td className="drag-handle"><Edit2 size={16} /></td>}
                     <td onClick={() => !isStaffOrderEditMode && setEditingEmployee(emp)}>{emp.rank}</td><td onClick={() => !isStaffOrderEditMode && setEditingEmployee(emp)}>{emp.name}</td><td onClick={() => !isStaffOrderEditMode && setEditingEmployee(emp)}>{emp.team}</td><td onClick={() => !isStaffOrderEditMode && setEditingEmployee(emp)}>{emp.isFixedNightStandby ? (emp.fixedNightStandbySlot || 'O') : 'X'}</td><td onClick={() => !isStaffOrderEditMode && setEditingEmployee(emp)}>{emp.isNightShiftExcluded ? 'O' : 'X'}</td>
                     {isStaffOrderEditMode && <td><button className="delete-btn-table" onClick={() => deleteEmployee(emp.id)}><Trash size={14} /></button></td>}
                   </tr>
@@ -604,7 +617,7 @@ function App({ user }) {
               <input type="date" value={newNote.date} onChange={e => setNewNote({...newNote, date: e.target.value})} />
               <select value={newNote.employeeId} onChange={e => setNewNote({...newNote, employeeId: e.target.value})}><option value="">직원 선택</option>{employees.map(e => <option key={e.id} value={e.id}>{e.rank} {e.name}</option>)}</select>
               <select value={newNote.type} onChange={e => setNewNote({...newNote, type: e.target.value, isAllDay: ['휴가', '병가'].includes(e.target.value)})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-              <label><input type="checkbox" checked={newNote.isAllDay} onChange={e => setNewNote({...newNote, isAllDay: e.target.checked})} /> 종일</label>
+              <label className="checkbox-item"><input type="checkbox" checked={newNote.isAllDay} onChange={e => setNewNote({...newNote, isAllDay: e.target.checked})} /> 종일</label>
               <input type="time" value={newNote.startTime} onChange={e => setNewNote({...newNote, startTime: e.target.value})} disabled={newNote.isAllDay} />
               <input type="time" value={newNote.endTime} onChange={e => setNewNote({...newNote, endTime: e.target.value})} disabled={newNote.isAllDay} />
               <button className="btn-primary" onClick={addNote}>추가</button>
@@ -643,11 +656,11 @@ function App({ user }) {
                     <div key={i} className="duty-type-item">
                       {editingTeamIdx === i ? (
                         <div className="edit-inline-form">
-                          <input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);})()} />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div>
+                          <input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);})()} />
+                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingTeamValue)return;const nt=[...settings.teams];nt[i]=editingTeamValue;setSettings({...settings,teams:nt});setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div>
                         </div>
                       ) : (
-                        <><span>{t}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i);setEditingTeamValue(t);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>setSettings({...settings,teams:settings.teams.filter((_,idx)=>idx!==i)})}><Trash size={14} /></button></div></>
+                        <><span>{t}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i);setEditingTeamValue(t);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,teams:settings.teams.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
                       )}
                     </div>
                   ))}
@@ -666,10 +679,10 @@ function App({ user }) {
                       {editingFocusIdx === i ? (
                         <div className="edit-inline-form">
                           <input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus />
-                          <div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces];np[i]=editingFocusValue;setSettings({...settings,focusPlaces:np});setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div>
+                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingFocusValue)return;const np=[...settings.focusPlaces];np[i]=editingFocusValue;setSettings({...settings,focusPlaces:np});setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div>
                         </div>
                       ) : (
-                        <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i);setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>setSettings({...settings,focusPlaces:settings.focusPlaces.filter((_,idx)=>idx!==i)})}><Trash size={14} /></button></div></>
+                        <><span>{p}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i);setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({...settings,focusPlaces:settings.focusPlaces.filter((_,idx)=>idx!==i)});}}><Trash size={14} /></button></div></>
                       )}
                     </div>
                   ))}
@@ -686,8 +699,15 @@ function App({ user }) {
                 <div className="duty-type-list">
                   {settings.dutyTypes.map((d, i) => (
                     <div key={i} className="duty-type-item">
-                      <span>{d.name} ({d.shift})</span>
-                      <button className="delete-btn" onClick={() => setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) })}><Trash size={14} /></button>
+                      {editingDutyIdx === i ? (
+                        <div className="edit-inline-form">
+                          <input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus />
+                          <select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>
+                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDutyValue)return;const nd=[...settings.dutyTypes];nd[i]={name:editingDutyValue,shift:editingDutyShift};setSettings({...settings,dutyTypes:nd});setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div>
+                        </div>
+                      ) : (
+                        <><span>{d.name} ({d.shift})</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i);setEditingDutyValue(d.name);setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -702,8 +722,14 @@ function App({ user }) {
                 <div className="duty-type-list">
                   {(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => (
                     <div key={i} className="duty-type-item">
-                      <span>{s}</span>
-                      <button className="delete-btn" onClick={() => setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) })}><Trash size={14} /></button>
+                      {editingDayTimeIdx === i ? (
+                        <div className="edit-inline-form">
+                          <input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus />
+                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingDayTimeValue)return;const nts=[...settings.dayTimeSlots];nts[i]=editingDayTimeValue;setSettings({...settings,dayTimeSlots:nts});setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div>
+                        </div>
+                      ) : (
+                        <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i);setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -718,8 +744,14 @@ function App({ user }) {
                 <div className="duty-type-list">
                   {(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => (
                     <div key={i} className="duty-type-item">
-                      <span>{s}</span>
-                      <button className="delete-btn" onClick={() => setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) })}><Trash size={14} /></button>
+                      {editingNightTimeIdx === i ? (
+                        <div className="edit-inline-form">
+                          <input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus />
+                          <div className="action-btns"><button className="btn-save" onClick={()=>{if(!editingNightTimeValue)return;const nts=[...settings.nightTimeSlots];nts[i]=editingNightTimeValue;setSettings({...settings,nightTimeSlots:nts});setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div>
+                        </div>
+                      ) : (
+                        <><span>{s}</span><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i);setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={()=>{if(window.confirm('삭제하시겠습니까?'))setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) });}}><Trash size={14} /></button></div></>
+                      )}
                     </div>
                   ))}
                 </div>

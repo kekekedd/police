@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import Login from './Login';
 import App from '../App'; // App.jsx를 임포트하여 로그인 후 보여줄 메인 화면으로 사용합니다.
