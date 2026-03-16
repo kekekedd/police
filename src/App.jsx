@@ -391,6 +391,8 @@ function App({ user }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false); // 설정 로딩 완료 여부
+  
   const [activeTab, setActiveTab] = useState('roster');
   const [employeeTabTeam, setEmployeeTabTeam] = useState('1팀');
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
@@ -459,6 +461,7 @@ function App({ user }) {
   useEffect(() => {
     if (!user) return;
 
+    // 1. 설정 데이터 로드
     const fetchSettings = async () => {
       try {
         const savedSettings = await getDocument('settings', user.uid);
@@ -467,12 +470,15 @@ function App({ user }) {
           setTempStationSettings({ stationName: savedSettings.stationName, chiefName: savedSettings.chiefName });
           if (savedSettings.teams?.length > 0) setEmployeeTabTeam(savedSettings.teams[0]);
         }
+        setSettingsLoaded(true); // 시도했으므로 true (있건 없건)
       } catch (e) {
         console.error("Settings load error:", e);
+        setSettingsLoaded(true);
       }
     };
     fetchSettings();
 
+    // 2. 직원 명단 실시간 리스너
     const qEmployees = query(collection(db, 'employees'), where('userId', '==', user.uid));
     const unsubEmployees = onSnapshot(qEmployees, (snapshot) => {
       const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -483,6 +489,7 @@ function App({ user }) {
       setIsLoading(false);
     });
 
+    // 3. 특이사항 실시간 리스너
     const qNotes = query(collection(db, 'specialNotes'), where('userId', '==', user.uid));
     const unsubNotes = onSnapshot(qNotes, (snapshot) => {
       const notesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -495,6 +502,7 @@ function App({ user }) {
     };
   }, [user]);
 
+  // 4. 근무표 데이터 실시간 리스너
   useEffect(() => {
     if (!user || isLoading) return;
 
@@ -536,11 +544,12 @@ function App({ user }) {
     return () => unsubRoster();
   }, [user, currentRoster.date, currentRoster.shiftType, isLoading, employees, specialNotes]);
 
+  // 설정 자동 저장 (로딩이 확실히 끝난 후에만 실행되도록 보호)
   useEffect(() => {
-    if (user && !isLoading) { 
+    if (user && !isLoading && settingsLoaded) { 
       saveDocument('settings', user.uid, { ...settings, userId: user.uid }); 
     }
-  }, [settings, isLoading, user]);
+  }, [settings, isLoading, user, settingsLoaded]);
 
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
 
@@ -593,11 +602,11 @@ function App({ user }) {
 
     while (curr <= end) {
       const dateStr = curr.toISOString().split('T')[0];
-      const noteId = `${Date.now()}_${dateStr}_${newNote.employeeId}`;
+      const docId = `${currentUser.uid}_${Date.now()}_${dateStr}_${newNote.employeeId}`;
       notesToSave.push({
         ...newNote,
         date: dateStr,
-        id: noteId,
+        id: docId,
         userId: currentUser.uid
       });
       curr.setDate(curr.getDate() + 1);
@@ -626,10 +635,11 @@ function App({ user }) {
 
   const addEmployee = async (data) => {
     const currentUser = auth.currentUser;
-    const staffWithUser = { ...data, userId: currentUser.uid };
+    const docId = `${currentUser.uid}_${data.id}`;
+    const staffWithUser = { ...data, id: docId, userId: currentUser.uid };
     setIsSyncing(true);
     try { 
-      await saveDocument('employees', data.id, staffWithUser); 
+      await saveDocument('employees', docId, staffWithUser); 
       setIsAddingEmployee(false); 
     } catch (e) { 
       alert('추가 실패'); 
