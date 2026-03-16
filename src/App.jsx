@@ -485,7 +485,14 @@ function App({ user }) {
   const casualtyIds = new Set(casualties.map(n => n.employeeId));
   const currentTeamEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName && !casualtyIds.has(e.id));
 
-  if (isLoading) return <div className="loading-screen">데이터를 불러오는 중입니다...</div>;
+  if (isLoading) return (
+    <div className="loading-screen">
+      <div className="loader-container">
+        <div className="loader-spinner"></div>
+        <div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="app-container">
@@ -691,6 +698,7 @@ function App({ user }) {
 
               <div className="settings-card">
                 <h3>근무 유형 관리</h3>
+                <p className="hint-text">각 지구대 근무 실정에 맞게 근무 항목을 수정하거나 추가하세요.</p>
                 <div className="note-form">
                   <input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} />
                   <select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select>

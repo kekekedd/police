@@ -87,6 +87,7 @@ const styles = {
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [isLogin, setIsLogin] = useState(true);
@@ -117,6 +118,12 @@ const Login = () => {
     e.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (!isLogin && password !== confirmPassword) {
+      setError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
@@ -164,13 +171,23 @@ const Login = () => {
             required
             style={styles.input}
           />
+          {!isLogin && (
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="비밀번호 확인"
+              required
+              style={styles.input}
+            />
+          )}
           <button type="submit" style={styles.button}>
             {isLogin ? '로그인' : '회원가입'}
           </button>
         </form>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button onClick={() => setIsLogin(!isLogin)} style={styles.toggleButton}>
+          <button onClick={() => { setIsLogin(!isLogin); setError(null); setMessage(null); }} style={styles.toggleButton}>
             {isLogin ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
           </button>
           
