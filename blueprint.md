@@ -25,28 +25,35 @@
 
 ### 실행 계획: `localStorage`를 `Firebase`로 전환
 
-**1. Firebase 프로젝트 초기화 (진행중)**
+**1. Firebase 프로젝트 초기화 (완료)**
    - **작업:** `firebase_init` 도구를 사용하여 현재 React 프로젝트에 Firebase SDK를 연동하고 기본 설정을 구성합니다.
    - **결과물:** 프로젝트에 Firebase 연동 환경 구축.
 
-**2. Firebase Authentication (인증) 도입**
+**2. Firebase Authentication (인증) 도입 (완료 및 개선)**
    - **작업:**
      - Firebase 콘솔에서 `이메일/비밀번호` 인증 방식 활성화.
      - 로그인/회원가입 UI 컴포넌트 생성.
      - 앱의 최상위 레벨에서 로그인 상태를 체크하여, 로그인하지 않은 사용자는 로그인 페이지로 리디렉션하는 로직 구현.
+     - **최근 수정 (2026-03-16):** 
+       - 로그인 오류 메시지 한국어화 (상세 에러 코드 대응).
+       - 비밀번호 재설정(Password Reset) 기능 추가.
+       - 헤더에 로그아웃 버튼 추가 및 로그인 세션 관리 개선.
    - **결과물:** 사용자 로그인 및 접근 제어 기능.
 
-**3. Firebase Firestore (데이터베이스) 설계 및 마이그레이션**
+**3. Firebase Firestore (데이터베이스) 설계 및 마이그레이션 (진행중)**
    - **작업:**
      - **데이터 모델링:**
        - `users`: 사용자 계정 정보 (uid, email, teamId 등)
        - `employees`: 전 직원 명단 (기존 `employees` 상태)
-       - `schedules`: 날짜별, 팀별 근무표 정보 (기존 `rosters` 데이터)
+       - `rosters`: 날짜별, 팀별 근무표 정보 (기존 `schedules` 데이터)
        - `specialNotes`: 직원별 특이사항 (기존 `specialNotes` 상태)
        - `settings`: 전역 설정 (기존 `settings` 상태)
      - **로직 변경:**
        - `useState`와 `localStorage`를 사용해 상태를 초기화하던 부분을 `useEffect`와 Firestore 데이터 조회 로직으로 전면 교체.
-       - 저장(`handleSave`), 추가(`addEmployee`), 삭제(`deleteEmployee`) 등 데이터 변경이 일어나는 모든 함수를 Firestore에 데이터를 쓰고 업데이트하는 비동기 함수로 수정.
+       - **최근 수정 (2026-03-16):**
+         - 데이터 로딩 중 초기 데이터(INITIAL_EMPLOYEES)가 잠깐 보이는 현상 방지 및 로딩 상태 처리 강화.
+         - 데이터가 없을 경우 '데모 데이터'임을 알리는 인디케이터 추가.
+         - 누락되었던 '중점 구역', '시간대' 설정 UI 복구 및 저장 로직 확인.
    - **결과물:** 모든 데이터가 중앙 데이터베이스에서 관리되는 애플리케이션.
 
 **4. Firestore 보안 규칙 적용**

@@ -1,1 +1,9 @@
 node_modules
+dist
+dist-ssr
+*.local
+*.log
+firebase-debug.log*
+.idx
+.vscode
+.DS_Store
