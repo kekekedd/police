@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability } from './utils/rotation';
-import { auth, db, saveDocument, getDocument, removeDocument } from './firebase';
+import { auth, db, saveDocument, removeDocument } from './firebase';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import './App.css';
 
@@ -61,7 +61,6 @@ const getRankWeight = (rank) => {
   return index === -1 ? 99 : index;
 };
 
-// --- 공통 컴포넌트 ---
 function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, onSelect }) {
   if (!isOpen) return null;
   const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
@@ -175,7 +174,67 @@ function EmployeeEditModal({ isOpen, employee, settings, onSave, onDelete, onClo
   );
 }
 
-// --- 메인 앱 ---
+function FocusPlaceSelectionModal({ isOpen, onClose, slot, duty, focusPlaces, selectedValue, currentFocusAreas, dutyTypes, onSelect }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content selection-modal">
+        <div className="modal-header"><h3>중점 구역 선택 ({slot})</h3><button onClick={onClose} className="close-btn"><X size={20} /></button></div>
+        <div className="staff-grid scrollable">
+          <div className={`staff-card-v2 ${!selectedValue ? 'selected' : ''}`} onClick={() => { onSelect(''); onClose(); }}><div className="staff-name">선택 안함</div></div>
+          {focusPlaces.map(place => {
+            let isAlreadyUsed = false;
+            if (currentFocusAreas) {
+              isAlreadyUsed = dutyTypes.some(d => (d.name !== duty && currentFocusAreas[`${slot}_${d.name}`] === place));
+            }
+            const isSelected = selectedValue === place;
+            return (
+              <div key={place} className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isAlreadyUsed && !isSelected ? 'disabled' : ''}`} onClick={() => (!isAlreadyUsed || isSelected) && (onSelect(place), onClose())}>
+                <div className="staff-name">{place}</div>
+                {isAlreadyUsed && !isSelected && <div className="staff-note-label warning" style={{ fontSize: '0.6rem' }}>배치됨</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div className="modal-footer"><button className="btn-outline" onClick={onClose}>닫기</button></div>
+      </div>
+    </div>
+  );
+}
+
+function VolunteerAddModal({ isOpen, onSave, onClose }) {
+  const [rank, setRank] = useState('경위');
+  const [name, setName] = useState('');
+  if (!isOpen) return null;
+  const handleAdd = () => { if (!name) return alert('성명을 입력하세요.'); onSave({ id: `vol_${Date.now()}`, rank, name, isVolunteer: true }); setName(''); onClose(); };
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content admin-modal">
+        <div className="modal-header"><h3>자원근무자 직접 입력</h3><button onClick={onClose} className="close-btn"><X size={20} /></button></div>
+        <div className="modal-body edit-form">
+          <div className="input-group">
+            <label>계급</label>
+            <div className="btn-group">
+              {RANKS.map(r => (
+                <button 
+                  key={r} 
+                  className={`selection-btn ${rank === r ? 'active' : ''}`}
+                  onClick={() => setRank(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="input-group"><label>성명</label><input type="text" placeholder="자원근무자 성명" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus /></div>
+        </div>
+        <div className="modal-footer"><button className="btn-outline" onClick={onClose}>취소</button><button className="btn-primary" onClick={handleAdd}><Plus size={16} /> 추가</button></div>
+      </div>
+    </div>
+  );
+}
+
+// Final optimized version
 function App({ user }) {
   const [employees, setEmployees] = useState([]);
   const [specialNotes, setSpecialNotes] = useState([]);
@@ -195,7 +254,6 @@ function App({ user }) {
   const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
   const [noteTeamFilter, setNoteTeamFilter] = useState('');
   
-  // 편집 상태들
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteValue, setEditingNoteValue] = useState(null);
 
@@ -232,21 +290,17 @@ function App({ user }) {
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
 
-  // 이전 상태를 저장하기 위한 Ref (자동 저장 비교용)
-  const lastSavedRosterId = useRef('');
-
-  // 1. 실시간 동기화 (설정, 직원, 특이사항)
   useEffect(() => {
     if (!user) return;
     const unsubSettings = onSnapshot(doc(db, 'settings', user.uid), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // 배열인 경우 객체 배열로 마이그레이션 로직 포함
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
         setSettings({...data, teams: migratedTeams});
         setTempStationSettings({ stationName: data.stationName, chiefName: data.chiefName });
         if (!currentRoster.metadata.teamName && migratedTeams.filter(t => t.isVisible).length > 0) {
-          setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, teamName: migratedTeams.find(t => t.isVisible).name, chief: data.chiefName || prev.metadata.chief } }));
+          const firstVisibleTeam = migratedTeams.find(t => t.isVisible).name;
+          setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, teamName: firstVisibleTeam, chief: data.chiefName || prev.metadata.chief } }));
           setEmployeeTabTeam(migratedTeams[0].name);
         }
       }
@@ -262,18 +316,13 @@ function App({ user }) {
     return () => { unsubSettings(); unsubEmployees(); unsubNotes(); };
   }, [user]);
 
-  // 2. 근무표 실시간 동기화 (날짜 + 구분 + 팀명 기준)
   useEffect(() => {
     if (!user || !isDataInitialized || !currentRoster.metadata.teamName) return;
-    
-    // 이전에 작업하던 내용이 있다면 즉시 저장 시도 (Debounce 타이머 무시하고 강제 동기화)
     const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
-    
     const unsubRoster = onSnapshot(doc(db, 'rosters', rosterId), (docSnap) => {
       if (docSnap.exists()) {
         setCurrentRoster(prev => ({ ...prev, ...docSnap.data() }));
       } else {
-        // 데이터가 없는 새 일지인 경우: 고정대기 등 기본값만 세팅
         const initialAssignments = {};
         if (currentRoster.shiftType === '야간') {
           employees.forEach(emp => {
@@ -292,7 +341,6 @@ function App({ user }) {
     return () => unsubRoster();
   }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized]);
 
-  // 3. 고성능 자동 저장 (Debounced)
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
     const timer = setTimeout(() => {
@@ -312,7 +360,6 @@ function App({ user }) {
     return () => clearTimeout(timer);
   }, [currentRoster, user, isDataInitialized, isLoading]);
 
-  // 핸들러 함수들
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
     setCurrentRoster(prev => {
@@ -379,9 +426,12 @@ function App({ user }) {
 
   return (
     <div className="app-container">
-      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 동기화 중...</div>}
+      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 동기화 중...</div>}
       <header className="no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>{employees.length === 0 && <span className="demo-label">데이터 없음</span>}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
+          {employees.length === 0 && <span className="demo-label">직원 데이터 없음</span>}
+        </div>
         <nav>
           <button onClick={() => setActiveTab('roster')} className={activeTab === 'roster' ? 'active' : ''}>근무표 작성</button>
           <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
@@ -416,10 +466,11 @@ function App({ user }) {
                 <tbody>
                   <tr><td className="label">날 짜</td><td colSpan="3" className="val">{formatDateWithDay(currentRoster.date)}</td><td className="label">날 씨</td><td colSpan="3" className="val">{currentRoster.weather}</td></tr>
                   <tr><td className="label">지구대/파출소장</td><td colSpan="3" className="val">{currentRoster.metadata.chief} ({currentRoster.metadata.chiefStatus})</td><td className="label">순찰팀장</td><td className="val">{currentRoster.metadata.teamName}</td><td colSpan="2" className="val">{currentRoster.metadata.teamLeader}</td></tr>
-                  <tr className="summary-counts"><td className="label">총원</td><td className="label">소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">전종자</td></tr>
+                  <tr className="summary-counts"><td className="label">총원</td><td className="label">지구대/파출소장</td><td className="label" colSpan="3">순찰요원</td><td className="label">관리요원</td><td className="label">사고자</td><td className="label">전종자</td></tr>
                   <tr className="summary-values"><td>{employees.length}</td><td>1</td><td colSpan="3">{settings.teams.map(t => `${t.name}(${employees.filter(e => e.team === t.name).length}) `)}</td><td>{assignedAdminCount}</td><td>{todayCasualties.length}</td><td>0</td></tr>
                 </tbody>
               </table>
+
               <div className="worker-section real">
                 <table className="worker-table real">
                   <thead><tr><th colSpan="2">근 무 자</th><th colSpan="2">사 고 자</th><th colSpan="2">자원근무자</th></tr><tr className="sub-header"><th>계급</th><th>성명</th><th>성명</th><th>사유</th><th>계급</th><th>성명</th></tr></thead>
@@ -434,6 +485,7 @@ function App({ user }) {
                   </tbody>
                 </table>
               </div>
+
               <table className="roster-table real">
                 <thead><tr><th width="80">구분</th>{currentTimeSlots.map(s => <th key={s}>{s}</th>)}</tr></thead>
                 <tbody>
