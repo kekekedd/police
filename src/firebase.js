@@ -17,7 +17,7 @@ import { getAuth } from "firebase/auth";
 
 // ... (기존 설정 유지)
 const firebaseConfig = {
-  apiKey: "AIzaSyCTTnt_7Sl7vzq04wkLhlKeGWKJ7bOgOrU",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "watchful-idea-473105-n3.firebaseapp.com",
   projectId: "watchful-idea-473105-n3",
   storageBucket: "watchful-idea-473105-n3.firebasestorage.app",

@@ -298,7 +298,7 @@ function App({ user }) {
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
-    metadata: { chief: '', chiefStatus: '근무', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0 },
+    metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0 },
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
 
@@ -459,11 +459,25 @@ function App({ user }) {
               <div className="header-card"><label>구분</label><div className="toggle-buttons"><button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button><button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button></div></div>
               <div className="header-card"><label>팀명 선택</label><div className="btn-group">{settings.teams.map(team => <button key={team} className={`selection-btn ${currentRoster.metadata.teamName === team ? 'active' : ''}`} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team}})}>{team}</button>)}</div></div>
               <div className="header-card">
+                <label>날씨</label>
+                <div className="btn-group">
+                  {WEATHER_TYPES.map(w => (
+                    <button 
+                      key={w} 
+                      className={`selection-btn ${currentRoster.weather === w ? 'active' : ''}`}
+                      onClick={() => setCurrentRoster({...currentRoster, weather: w})}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="header-card">
                 <label>지구대장</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input style={{ flex: 2 }} type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
-                  <div className="toggle-buttons" style={{ flex: 1.5 }}>
-                    <button className={currentRoster.metadata.chiefStatus === '근무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '근무'}})}>근무</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
+                  <div className="toggle-buttons">
+                    <button className={currentRoster.metadata.chiefStatus === '일근' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '일근'}})}>일근</button>
                     <button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '휴무'}})}>휴무</button>
                   </div>
                 </div>
