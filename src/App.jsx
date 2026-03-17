@@ -731,23 +731,23 @@ function App({ user }) {
                     <thead>
                         <tr>
                             <th colSpan="8">근 무 자</th>
-                            <th colSpan="3">사 고 자</th>
                             <th colSpan="2">자원근무자</th>
+                            <th colSpan="3">사 고 자</th>
                         </tr>
                         <tr className="sub-header">
                             <th>소속팀</th><th>번호</th><th>계급</th><th>성명</th>
                             <th>소속팀</th><th>번호</th><th>계급</th><th>성명</th>
-                            <th>계급</th><th>성명</th><th>사유</th>
                             <th>계급</th><th>성명</th>
+                            <th>계급</th><th>성명</th><th>사유</th>
                         </tr>
                     </thead>
                     <tbody>
                         {Array.from({ length: 10 }).map((_, i) => {
                             const leftEmp = currentTeamEmployees[i];
                             const rightEmp = currentTeamEmployees[i + 10];
+                            const volunteer = combinedVolunteers[i];
                             const absentee = teamAbsentees[i];
                             const absenteeEmp = absentee ? employees.find(e => e.id === absentee.employeeId) : null;
-                            const volunteer = currentRoster.volunteerStaff && currentRoster.volunteerStaff[i];
                             return (
                                 <tr key={i}>
                                     {/* 근무자 1 */}
@@ -760,13 +760,13 @@ function App({ user }) {
                                     <td>{rightEmp ? i + 11 : ''}</td>
                                     <td>{rightEmp?.rank || ''}</td>
                                     <td>{rightEmp?.name || ''}</td>
+                                    {/* 자원근무자 */}
+                                    <td>{volunteer?.rank || ''}</td>
+                                    <td>{volunteer?.name || ''}</td>
                                     {/* 사고자 */}
                                     <td>{absenteeEmp?.rank || ''}</td>
                                     <td>{absenteeEmp?.name || ''}</td>
                                     <td>{absentee?.type || ''}</td>
-                                    {/* 자원근무자 */}
-                                    <td>{combinedVolunteers[i]?.rank || ''}</td>
-                                    <td>{combinedVolunteers[i]?.name || ''}</td>
                                 </tr>
                             );
                         })}
