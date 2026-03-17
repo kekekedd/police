@@ -532,10 +532,22 @@ function App({ user }) {
     employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
   );
   
-  // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 (부분 특이사항자 포함)
-  const currentTeamEmployees = employees
-    .filter(e => e.team === currentRoster.metadata.teamName && !stationAllDayNotes.some(n => n.employeeId === e.id))
-    .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 + (주간일 경우 관리반 포함)
+  const currentTeamEmployees = (() => {
+    // 1. 해당 팀의 일반 팀원 (종일 특이사항자 제외)
+    const teamEmps = employees
+      .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
+      .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+
+    // 2. 관리반 인원 (주간 근무일 때만, 종일 특이사항자 제외)
+    const adminEmps = currentRoster.shiftType === '주간' 
+      ? employees.filter(e => e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
+                 .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank))
+      : [];
+
+    // 3. 일반 팀원 뒤에 관리반을 붙여서 반환
+    return [...teamEmps, ...adminEmps];
+  })();
   
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
 
