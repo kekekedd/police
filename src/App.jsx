@@ -511,10 +511,23 @@ function App({ user }) {
   const addEmployee = (data) => {
     const docId = `${user.uid}_${Date.now()}`;
     setIsSyncing(true);
-    saveDocument('employees', docId, { ...data, id: docId, userId: user.uid }).then(() => { setIsAddingEmployee(false); setIsSyncing(false); });
+    saveDocument('employees', docId, { ...data, id: docId, userId: user.uid })
+      .then(() => { 
+        setIsAddingEmployee(false); 
+        setIsSyncing(false); 
+      })
+      .catch(err => {
+        alert("직원 저장 실패: " + err.message);
+        setIsSyncing(false);
+      });
   };
 
-  const updateEmployee = (updated) => { setEditingEmployee(null); setIsSyncing(true); saveDocument('employees', updated.id, updated).finally(() => setIsSyncing(false)); };
+  const updateEmployee = (updated) => { 
+    setEditingEmployee(null); 
+    setIsSyncing(true); 
+    saveDocument('employees', updated.id, { ...updated, userId: user.uid })
+      .finally(() => setIsSyncing(false)); 
+  };
 
   const deleteEmployee = (id) => { if (window.confirm('삭제하시겠습니까?')) { setIsSyncing(true); removeDocument('employees', id).finally(() => setIsSyncing(false)); } };
 

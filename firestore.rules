@@ -1,8 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // 공통: 인증된 사용자만 접근 가능
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 문서의 소유자인지 확인 (데이터 필드의 userId와 현재 로그인한 UID 비교)
+    function isOwner(data) {
+      return request.auth.uid == data.userId;
+    }
+
+    // 설정 (settings): 문서 ID 자체가 UID인 경우
+    match /settings/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 직원 (employees), 특이사항 (specialNotes), 근무표 (rosters)
+    match /{collectionName}/{docId} {
+      allow read, write: if isAuthenticated() && (
+        (resource == null || resource.data.userId == request.auth.uid) &&
+        (request.resource == null || request.resource.data.userId == request.auth.uid)
+      );
     }
   }
 }
