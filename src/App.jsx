@@ -433,11 +433,24 @@ function App({ user }) {
     }
   };
 
+  // 근무표 초기화 함수
+  const handleResetRoster = () => {
+    if (window.confirm('현재 날짜와 팀의 근무 배치를 모두 초기화하시겠습니까?')) {
+      setCurrentRoster(prev => ({
+        ...prev,
+        assignments: {},
+        focusAreas: {},
+        volunteerStaff: []
+      }));
+    }
+  };
+
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
     setCurrentRoster(prev => {
       const currentIds = prev.assignments[key] || [];
       if (currentIds.includes(id)) return { ...prev, assignments: { ...prev.assignments, [key]: currentIds.filter(i => i !== id) } };
+      // 추가 시 정렬 로직은 렌더링 시점에 적용하므로 여기서는 ID만 추가
       return { ...prev, assignments: { ...prev.assignments, [key]: [...currentIds, id] } };
     });
   };
@@ -642,6 +655,7 @@ function App({ user }) {
               </div>
               <div className="header-actions">
                 <button className="btn-primary" onClick={handleSaveRoster}><Save size={16} /> 저장하기</button>
+                <button className="btn-danger" onClick={handleResetRoster} style={{ background: '#ff4444', color: 'white', borderRadius: '8px', border: 'none', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><Trash size={16} /> 일지 초기화</button>
                 <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
                 <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>
@@ -757,7 +771,18 @@ function App({ user }) {
                       {currentTimeSlots.map(slot => {
                         const key = `${slot}_${dutyObj.name}`;
                         if (dutyObj.name.includes('중점')) return <td key={slot} className="assignment-cell focus-cell" onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div></td>;
-                        const staff = (currentRoster.assignments[key] || []).map(id => [...employees, ...(currentRoster.volunteerStaff || [])].find(e => e.id === id)).filter(Boolean);
+                        
+                        // [수정된 부분] 선택된 ID들을 전체 직원 명단(employees) 순서에 맞춰 정렬하여 표시
+                        const staffIds = currentRoster.assignments[key] || [];
+                        const staff = [...employees, ...(currentRoster.volunteerStaff || [])]
+                          .filter(e => staffIds.includes(e.id))
+                          .sort((a, b) => {
+                            // 일반 직원은 계급순 정렬, 자원근무자는 뒤로
+                            if (a.isVolunteer && !b.isVolunteer) return 1;
+                            if (!a.isVolunteer && b.isVolunteer) return -1;
+                            return getRankWeight(a.rank) - getRankWeight(b.rank);
+                          });
+
                         return <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div></td>;
                       })}
                     </tr>
