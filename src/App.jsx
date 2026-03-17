@@ -547,6 +547,9 @@ function App({ user }) {
   return (
     <div className="app-container">
       {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 동기화 중...</div>}
+      <div style={{ padding: '4px 10px', fontSize: '10px', color: '#888', background: '#f5f5f5' }}>
+        현재 접속 계정 ID: {user.uid}
+      </div>
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
