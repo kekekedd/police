@@ -15,7 +15,6 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// ... (기존 설정 유지)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "watchful-idea-473105-n3.firebaseapp.com",
@@ -49,7 +48,7 @@ export const getDocument = async (coll, id) => {
 export const saveDocument = async (coll, id, data) => {
   const docRef = doc(db, coll, id);
   try {
-    // 5초 타임아웃 설정 (네트워크 먹통 대비)
+    // 10초 타임아웃 설정 (네트워크 먹통 대비)
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('네트워크 응답 시간 초과')), 10000)
     );

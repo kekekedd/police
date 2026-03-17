@@ -415,7 +415,7 @@ function App({ user }) {
       }
     });
     return () => unsubRoster();
-  }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized]);
+  }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized, employees, specialNotes]);
 
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
