@@ -925,7 +925,13 @@ function App({ user }) {
                               <option value="야간">야간 지원</option>
                             </select>
                           ) : (
-                            !editingNoteValue.isAllDay && <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                            !editingNoteValue.isAllDay && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                                <span>~</span>
+                                <input type="time" value={editingNoteValue.endTime} onChange={e => setEditingNoteValue({...editingNoteValue, endTime: e.target.value})} />
+                              </div>
+                            )
                           )}
                           <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
                           <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
