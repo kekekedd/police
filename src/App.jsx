@@ -564,11 +564,33 @@ function App({ user }) {
   
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
 
-  if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div></div></div>);
+  const checkServerConnection = async () => {
+    try {
+      const testId = `test_${Date.now()}`;
+      setIsSyncing(true);
+      // 서버에 직접 쓰기 시도
+      await saveDocument('connection_test', testId, { userId: user.uid, time: new Date().toISOString() });
+      // 즉시 지우기
+      await removeDocument('connection_test', testId);
+      alert('✅ 서버 연결 성공! 이제 입력하는 데이터는 다른 기기에서도 보입니다.');
+    } catch (err) {
+      alert(`❌ 서버 연결 실패: ${err.message}\n인터넷이나 API 설정을 확인하세요.`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">서버 데이터를 불러오는 중입니다...</div></div></div>);
 
   return (
     <div className="app-container">
-      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 동기화 중...</div>}
+      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 통신 중...</div>}
+      <div className="no-print" style={{ padding: '10px', background: '#34495e', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '12px' }}>로그인 계정: {user.uid}</div>
+        <button onClick={checkServerConnection} style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+          서버 연결 강제 확인 (동기화 테스트)
+        </button>
+      </div>
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
