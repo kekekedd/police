@@ -8,12 +8,13 @@ import {
   collection, 
   query, 
   where, 
-  getDocs
+  getDocs,
+  enableIndexedDbPersistence,
+  terminate,
+  clearIndexedDbPersistence
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// API Key를 환경 변수가 아닌 실제 값으로 직접 입력합니다.
-// 이렇게 해야 다른 기기에서 별도의 .env 파일 없이도 데이터가 연동됩니다.
 const firebaseConfig = {
   apiKey: "AIzaSyCTTnt_7Sl7vzq04wkLhlKeGWKJ7bOgOrU", 
   authDomain: "watchful-idea-473105-n3.firebaseapp.com",
@@ -28,10 +29,26 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
+// [수습책 1] 오프라인 저장소(캐시) 다시 활성화
+// 이렇게 해야 서버 연결이 느려도 데이터가 즉시 사라지는 것을 방지할 수 있습니다.
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('다중 탭 경고: 캐시가 한쪽에서만 작동합니다.');
+    } else if (err.code === 'unimplemented') {
+        console.warn('브라우저 미지원: 캐시를 사용할 수 없습니다.');
+    }
+});
+
 export const saveDocument = async (coll, id, data) => {
   const docRef = doc(db, coll, id);
-  // 서버에 실제 저장이 완료될 때까지 기다립니다.
-  return await setDoc(docRef, data, { merge: true });
+  try {
+    // [수습책 2] 서버 응답을 기다리지 않고 로컬에 먼저 반영하도록 비동기로 실행
+    // 에러 발생 시에만 catch로 잡습니다.
+    return setDoc(docRef, data, { merge: true });
+  } catch (err) {
+    console.error("저장 중 즉각 오류 발생:", err);
+    throw err;
+  }
 };
 
 export const removeDocument = async (coll, id) => {
