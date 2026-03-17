@@ -424,7 +424,6 @@ function App({ user }) {
       saveDocument('settings', user.uid, { ...settings, userId: user.uid })
         .catch(err => {
           console.error("Settings Sync Error:", err);
-          // 알림을 너무 자주 띄우지 않기 위해 콘솔에만 기록하거나 상태로 관리
         })
         .finally(() => setIsSyncing(false));
     }, 2000);
@@ -572,12 +571,9 @@ function App({ user }) {
       await saveDocument('connection_test', testId, { userId: user.uid, time: new Date().toISOString() });
       // 즉시 지우기
       await removeDocument('connection_test', testId);
-      
-      // 서버에서 데이터 다시 불러오기 유도
-      window.location.reload(); 
-      alert('✅ 서버 연결 성공! 페이지를 새로고침하여 최신 데이터를 가져옵니다.');
+      alert('✅ 서버 연결 성공! 이제 입력하는 데이터는 다른 기기에서도 보입니다.');
     } catch (err) {
-      alert(`❌ 서버 연결 실패: ${err.message}\n설정이나 인터넷을 확인하세요.`);
+      alert(`❌ 서버 연결 실패: ${err.message}\n인터넷이나 API 설정을 확인하세요.`);
     } finally {
       setIsSyncing(false);
     }
