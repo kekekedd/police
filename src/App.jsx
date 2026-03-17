@@ -547,8 +547,11 @@ function App({ user }) {
   return (
     <div className="app-container">
       {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 동기화 중...</div>}
-      <div style={{ padding: '4px 10px', fontSize: '10px', color: '#888', background: '#f5f5f5' }}>
-        현재 접속 계정 ID: {user.uid}
+      <div style={{ padding: '8px 12px', fontSize: '11px', color: '#444', background: '#eee', borderBottom: '1px solid #ddd', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+        <span><strong>계정 ID:</strong> {user.uid}</span>
+        <span><strong>API Key:</strong> {import.meta.env.VITE_FIREBASE_API_KEY ? '✅ 연결됨' : '❌ 누락됨 (.env 확인 필요)'}</span>
+        <span><strong>직원 수:</strong> {employees.length}명</span>
+        <span><strong>특이사항:</strong> {specialNotes.length}건</span>
       </div>
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
