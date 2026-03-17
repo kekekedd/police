@@ -140,7 +140,8 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
 function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
   const [newEmp, setNewEmp] = useState({ rank: '경위', name: '', team: '', isStandbyRotationEligible: true, isFixedNightStandby: false, isNightShiftExcluded: false, isAdminStaff: false });
   const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [endTime, setStartTime_] = useState("");
+  const [end_Time, setEndTime] = useState("");
   useEffect(() => { if(isOpen && settings.teams.length > 0) setNewEmp(prev => ({...prev, team: settings.teams[0].name})); }, [isOpen, settings]);
   useEffect(() => {
     const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
@@ -152,7 +153,7 @@ function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
   const handleAdd = () => {
     if (!newEmp.name) return alert('성명을 입력하세요.');
     const finalData = { ...newEmp, id: Date.now().toString() };
-    if (newEmp.isFixedNightStandby && startTime && endTime) finalData.fixedNightStandbySlot = `${startTime}-${endTime}`;
+    if (newEmp.isFixedNightStandby && startTime && end_Time) finalData.fixedNightStandbySlot = `${startTime}-${end_Time}`;
     onSave(finalData);
     setNewEmp({ rank: '경위', name: '', team: settings.teams[0].name, isStandbyRotationEligible: true, isFixedNightStandby: false, isNightShiftExcluded: false, isAdminStaff: false });
   };
@@ -170,7 +171,7 @@ function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
             <label className="checkbox-item"><input type="checkbox" checked={newEmp.isNightShiftExcluded || newEmp.isAdminStaff} onChange={e => setNewEmp({ ...newEmp, isNightShiftExcluded: e.target.checked })} disabled={newEmp.isAdminStaff} />야간 근무 제외</label>
             <label className="checkbox-item admin-opt"><input type="checkbox" checked={newEmp.isAdminStaff} onChange={e => setNewEmp({ ...newEmp, isAdminStaff: e.target.checked, isNightShiftExcluded: e.target.checked || newEmp.isNightShiftExcluded })} />관리반 (주간 전담)</label>
           </div>
-          {newEmp.isFixedNightStandby && <div className="input-group"><label>고정 대기 시간대 설정</label><div className="time-input-row"><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /><span>~</span><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} /></div></div>}
+          {newEmp.isFixedNightStandby && <div className="input-group"><label>고정 대기 시간대 설정</label><div className="time-input-row"><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /><span>~</span><input type="time" value={end_Time} onChange={e => setEndTime(e.target.value)} /></div></div>}
         </div>
         <div className="modal-footer"><button className="btn-outline" onClick={onClose}>취소</button><button className="btn-primary" onClick={handleAdd}><Plus size={16} /> 등록</button></div>
       </div>
@@ -399,50 +400,38 @@ function App({ user }) {
       if (docSnap.exists()) {
         setCurrentRoster(prev => ({ ...prev, ...docSnap.data() }));
       } else {
-        const initialAssignments = {};
-        if (currentRoster.shiftType === '야간') {
-          employees.forEach(emp => {
-            if (emp.team === currentRoster.metadata.teamName && emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
-              const notesForDate = specialNotes.filter(n => n.date === currentRoster.date);
-              if (checkAvailability(emp, emp.fixedNightStandbySlot.split('-')[0], emp.fixedNightStandbySlot.split('-')[1], notesForDate).available) {
-                const key = `${emp.fixedNightStandbySlot}_대기근무`;
-                initialAssignments[key] = [...(initialAssignments[key] || []), emp.id];
-              }
-            }
-          });
-        }
-        setCurrentRoster(prev => ({ ...prev, assignments: initialAssignments, focusAreas: {}, volunteerStaff: [] }));
+        // Reset only assignments and focus areas, not the entire roster
+        setCurrentRoster(prev => ({ ...prev, assignments: {}, focusAreas: {}, volunteerStaff: [] }));
       }
     });
     return () => unsubRoster();
-  }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized, employees, specialNotes]);
+  }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized]);
 
+  // 설정 자동 저장
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
     const timer = setTimeout(() => {
       setIsSyncing(true);
       saveDocument('settings', user.uid, { ...settings, userId: user.uid })
-        .catch(err => {
-          console.error("Settings Sync Error:", err);
-        })
         .finally(() => setIsSyncing(false));
     }, 2000);
     return () => clearTimeout(timer);
   }, [settings, user, isDataInitialized, isLoading]);
 
-  useEffect(() => {
-    if (!user || !isDataInitialized || isLoading || !currentRoster.metadata.teamName) return;
-    const timer = setTimeout(() => {
-      const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
+  // 근무표 명시적 저장 함수
+  const handleSaveRoster = async () => {
+    if (!user || !currentRoster.metadata.teamName) return;
+    try {
       setIsSyncing(true);
-      saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() })
-        .catch(err => {
-          console.error("Roster Sync Error:", err);
-        })
-        .finally(() => setIsSyncing(false));
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [currentRoster, user, isDataInitialized, isLoading]);
+      const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
+      await saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() });
+      alert('근무표가 서버에 안전하게 저장되었습니다.');
+    } catch (err) {
+      alert('저장 실패: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
@@ -510,23 +499,10 @@ function App({ user }) {
   const addEmployee = (data) => {
     const docId = `${user.uid}_${Date.now()}`;
     setIsSyncing(true);
-    saveDocument('employees', docId, { ...data, id: docId, userId: user.uid })
-      .then(() => { 
-        setIsAddingEmployee(false); 
-        setIsSyncing(false); 
-      })
-      .catch(err => {
-        alert("직원 저장 실패: " + err.message);
-        setIsSyncing(false);
-      });
+    saveDocument('employees', docId, { ...data, id: docId, userId: user.uid }).then(() => { setIsAddingEmployee(false); setIsSyncing(false); });
   };
 
-  const updateEmployee = (updated) => { 
-    setEditingEmployee(null); 
-    setIsSyncing(true); 
-    saveDocument('employees', updated.id, { ...updated, userId: user.uid })
-      .finally(() => setIsSyncing(false)); 
-  };
+  const updateEmployee = (updated) => { setEditingEmployee(null); setIsSyncing(true); saveDocument('employees', updated.id, { ...updated, userId: user.uid }).finally(() => setIsSyncing(false)); };
 
   const deleteEmployee = (id) => { if (window.confirm('삭제하시겠습니까?')) { setIsSyncing(true); removeDocument('employees', id).finally(() => setIsSyncing(false)); } };
 
@@ -563,33 +539,11 @@ function App({ user }) {
   
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
 
-  const checkServerConnection = async () => {
-    try {
-      const testId = `test_${Date.now()}`;
-      setIsSyncing(true);
-      // 서버에 직접 쓰기 시도
-      await saveDocument('connection_test', testId, { userId: user.uid, time: new Date().toISOString() });
-      // 즉시 지우기
-      await removeDocument('connection_test', testId);
-      alert('✅ 서버 연결 성공! 이제 입력하는 데이터는 다른 기기에서도 보입니다.');
-    } catch (err) {
-      alert(`❌ 서버 연결 실패: ${err.message}\n인터넷이나 API 설정을 확인하세요.`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">서버 데이터를 불러오는 중입니다...</div></div></div>);
+  if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div></div></div>);
 
   return (
     <div className="app-container">
-      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 통신 중...</div>}
-      <div className="no-print" style={{ padding: '10px', background: '#34495e', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: '12px' }}>로그인 계정: {user.uid}</div>
-        <button onClick={checkServerConnection} style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-          서버 연결 강제 확인 (동기화 테스트)
-        </button>
-      </div>
+      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 서버와 동기화 중...</div>}
       <header className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <h1><Shield size={24} /> 경찰 근무표 관리 시스템</h1>
@@ -675,6 +629,7 @@ function App({ user }) {
                 </div>
               </div>
               <div className="header-actions">
+                <button className="btn-primary" onClick={handleSaveRoster}><Save size={16} /> 저장하기</button>
                 <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
                 <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>
