@@ -2,8 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      // 보안을 잠시 포기하고 모든 로그인을 허용하여 동기화부터 성공시킵니다.
-      allow read, write: if true;
+      // 로그인한 사용자만 데이터를 읽고 쓸 수 있도록 허용합니다.
+      // 이렇게 하면 앱의 모든 데이터가 사용자 계정과 안전하게 연결됩니다.
+      allow read, write: if request.auth != null;
     }
   }
 }
