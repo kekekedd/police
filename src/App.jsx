@@ -903,12 +903,27 @@ function App({ user }) {
                       {editingNoteId === n.id ? (
                         <div className="edit-note-inline">
                           <select value={editingNoteValue.type} onChange={e => setEditingNoteValue({...editingNoteValue, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                          <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                          {editingNoteValue.type === '지원근무' ? (
+                            <select value={editingNoteValue.supportShift} onChange={e => setEditingNoteValue({...editingNoteValue, supportShift: e.target.value})}>
+                              <option value="주간">주간 지원</option>
+                              <option value="야간">야간 지원</option>
+                            </select>
+                          ) : (
+                            !editingNoteValue.isAllDay && <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                          )}
                           <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
                           <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
                         </div>
                       ) : (
-                        <><div className="note-info"><span className="emp-name">{emp?.rank} {emp?.name}</span><span className={`note-tag-v2 ${n.type}`}>{n.type}</span><span className="note-time">{n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`}</span></div>
+                        <><div className="note-info">
+                          <span className="emp-name">{emp?.rank} {emp?.name}</span>
+                          <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
+                          <span className="note-time">
+                            {n.type === '지원근무' 
+                              ? `${n.supportShift} 지원` 
+                              : (n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`)}
+                          </span>
+                        </div>
                         <div className="action-btns"><button className="edit-btn-icon" onClick={() => {setEditingNoteId(n.id); setEditingNoteValue(n);}}><Edit2 size={14} /></button><button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button></div></>
                       )}
                     </div>
