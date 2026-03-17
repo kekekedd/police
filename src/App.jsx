@@ -421,8 +421,13 @@ function App({ user }) {
     if (!user || !isDataInitialized || isLoading) return;
     const timer = setTimeout(() => {
       setIsSyncing(true);
-      saveDocument('settings', user.uid, { ...settings, userId: user.uid }).finally(() => setIsSyncing(false));
-    }, 1500);
+      saveDocument('settings', user.uid, { ...settings, userId: user.uid })
+        .catch(err => {
+          console.error("Settings Sync Error:", err);
+          // 알림을 너무 자주 띄우지 않기 위해 콘솔에만 기록하거나 상태로 관리
+        })
+        .finally(() => setIsSyncing(false));
+    }, 2000);
     return () => clearTimeout(timer);
   }, [settings, user, isDataInitialized, isLoading]);
 
@@ -431,8 +436,12 @@ function App({ user }) {
     const timer = setTimeout(() => {
       const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
       setIsSyncing(true);
-      saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() }).finally(() => setIsSyncing(false));
-    }, 1000);
+      saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() })
+        .catch(err => {
+          console.error("Roster Sync Error:", err);
+        })
+        .finally(() => setIsSyncing(false));
+    }, 1500);
     return () => clearTimeout(timer);
   }, [currentRoster, user, isDataInitialized, isLoading]);
 

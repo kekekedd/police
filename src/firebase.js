@@ -48,7 +48,19 @@ export const getDocument = async (coll, id) => {
 
 export const saveDocument = async (coll, id, data) => {
   const docRef = doc(db, coll, id);
-  await setDoc(docRef, data, { merge: true });
+  try {
+    // 5초 타임아웃 설정 (네트워크 먹통 대비)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('네트워크 응답 시간 초과')), 10000)
+    );
+    await Promise.race([
+      setDoc(docRef, data, { merge: true }),
+      timeoutPromise
+    ]);
+  } catch (err) {
+    console.error("Firebase Save Error:", err);
+    throw err;
+  }
 };
 
 export const getCollection = async (coll, field, operator, value) => {
