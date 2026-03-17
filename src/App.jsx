@@ -533,7 +533,9 @@ function App({ user }) {
   const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
   
   // 지원근무자로 등록된 직원들 찾기 (특이사항 유형이 '지원근무'인 경우)
+  // [수정] 본인 팀이 아닌 경우에만 자원근무자 목록에 포함시킴
   const supportDutyStaff = employees.filter(emp => 
+    emp.team !== currentRoster.metadata.teamName && // 본인 팀 제외
     todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무')
   ).map(emp => ({ ...emp, isVolunteer: true, isSupportDuty: true }));
 
@@ -546,7 +548,9 @@ function App({ user }) {
   const stationAbsenteeCount = stationPartialNotes.length;
 
   // 근무표용: 현재 팀 직원 대상 모든 특이사항 (사고자 명단에 표시)
+  // [수정] 지원근무는 본인 팀 사고자 명단에서도 제외 (타 팀 지원이므로)
   const teamAbsentees = todaysNotes.filter(n => 
+    n.type !== '지원근무' && 
     employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
   );
   
