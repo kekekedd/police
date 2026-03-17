@@ -61,8 +61,107 @@ const getRankWeight = (rank) => {
   return index === -1 ? 99 : index;
 };
 
-// ... (Sub-components: StaffSelectionModal, EmployeeAddModal, etc. keep as is but use safeSave)
-// Simplified for context but fully functional in actual file
+// --- Sub Components ---
+
+function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNotes, selectedIds, currentAssignments, dutyTypes, settings, onSelect, onDeleteVolunteer }) {
+  const [activeTeamTab, setActiveTeamTab] = useState('');
+  useEffect(() => {
+    if (isOpen && settings?.teams?.length > 0 && !activeTeamTab) {
+      setActiveTeamTab(settings.teams[0].name);
+    }
+  }, [isOpen, settings, activeTeamTab]);
+
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+  const sortedEmployees = [...employees].sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
+  const filteredEmployees = activeTeamTab === '자원' 
+    ? sortedEmployees.filter(e => e.isVolunteer)
+    : sortedEmployees.filter(e => e.team === activeTeamTab && !e.isVolunteer);
+
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content selection-modal large">
+        <div className="modal-header">
+          <h3>직원 선택 ({duty} / {slot})</h3>
+          <button onClick={onClose} className="close-btn"><X size={20} /></button>
+        </div>
+        <div className="team-filter-tabs-mini modal-tabs">
+          {settings?.teams?.map(t => (
+            <button key={t.name} className={`team-tab-btn-mini ${activeTeamTab === t.name ? 'active' : ''}`} onClick={() => setActiveTeamTab(t.name)}>{t.name}</button>
+          ))}
+          <button className={`team-tab-btn-mini ${activeTeamTab === '자원' ? 'active' : ''}`} onClick={() => setActiveTeamTab('자원')}>자원근무자</button>
+        </div>
+        <div className="staff-grid scrollable modal-staff-grid">
+          {filteredEmployees.map(emp => {
+            const [s, e] = slot.split('-');
+            const availability = checkAvailability(emp, s, e, specialNotes);
+            const isSelected = selectedIds.includes(emp.id);
+            let otherDutyName = null;
+            if (currentAssignments) {
+              const otherDuty = dutyTypes.find(d => (d.name !== duty && (currentAssignments[`${slot}_${d.name}`] || []).includes(emp.id)));
+              if (otherDuty) otherDutyName = otherDuty.name;
+            }
+            const isBlocked = !availability.available || (otherDutyName && !isSelected);
+            const note = specialNotes.find(n => n.employeeId === emp.id && (n.isAllDay || isTimeOverlapping(s, e, n.startTime, n.endTime)));
+            return (
+              <div key={emp.id} className={`staff-card-v2 ${isSelected ? 'selected' : ''} ${isBlocked && !isSelected ? 'disabled' : ''}`} onClick={() => (!isBlocked || isSelected) && onSelect(emp.id)} style={{ position: 'relative' }}>
+                <div className="staff-rank">{emp.rank}</div>
+                <div className="staff-name">{emp.name}</div>
+                {emp.isVolunteer && (
+                  <button className="delete-btn-tiny" onClick={(e) => { e.stopPropagation(); if(window.confirm('삭제?')) onDeleteVolunteer(emp.id); }} style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(255,0,0,0.1)', border: 'none', borderRadius: '4px', color: '#ff4444' }}><Trash size={12} /></button>
+                )}
+                {emp.isAdminStaff && <div className="staff-note-label admin">관리반</div>}
+                {note && <div className={`staff-note-label ${note.type}`}>{note.type}</div>}
+                {otherDutyName && !note && <div className="staff-note-label warning">{otherDutyName}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div className="modal-footer"><button className="btn-primary" onClick={onClose}>확인</button></div>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
+  const [newEmp, setNewEmp] = useState({ rank: '경위', name: '', team: '', isStandbyRotationEligible: true, isFixedNightStandby: false, isNightShiftExcluded: false, isAdminStaff: false });
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  useEffect(() => { if(isOpen && settings.teams.length > 0) setNewEmp(prev => ({...prev, team: settings.teams[0].name})); }, [isOpen, settings]);
+  if (!isOpen) return null;
+  const handleAdd = () => {
+    if (!newEmp.name) return alert('성명을 입력하세요.');
+    const finalData = { ...newEmp, id: Date.now().toString() };
+    if (newEmp.isFixedNightStandby && startTime && endTime) finalData.fixedNightStandbySlot = `${startTime}-${endTime}`;
+    onSave(finalData);
+    setNewEmp({ ...newEmp, name: '' });
+  };
+  return (
+    <div className="modal-overlay no-print">
+      <div className="modal-content admin-modal">
+        <div className="modal-header"><h3>신규 직원 등록</h3><button onClick={onClose} className="close-btn"><X size={20} /></button></div>
+        <div className="modal-body edit-form">
+          <div className="input-group"><label>계급</label><div className="btn-group">{RANKS.map(r => <button key={r} className={`selection-btn ${newEmp.rank === r ? 'active' : ''}`} onClick={() => setNewEmp({ ...newEmp, rank: r })}>{r}</button>)}</div></div>
+          <div className="input-group"><label>성명</label><input type="text" value={newEmp.name} onChange={e => setNewEmp({ ...newEmp, name: e.target.value })} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus /></div>
+          <div className="input-group"><label>팀</label><div className="btn-group">{settings.teams.map(t => <button key={t.name} className={`selection-btn ${newEmp.team === t.name ? 'active' : ''}`} onClick={() => setNewEmp({ ...newEmp, team: t.name })}>{t.name}</button>)}</div></div>
+          <div className="checkbox-list">
+            <label className="checkbox-item"><input type="checkbox" checked={newEmp.isStandbyRotationEligible} onChange={e => setNewEmp({ ...newEmp, isStandbyRotationEligible: e.target.checked })} />순환대상</label>
+            <label className="checkbox-item"><input type="checkbox" checked={newEmp.isFixedNightStandby} onChange={e => setNewEmp({ ...newEmp, isFixedNightStandby: e.target.checked })} />고정대기</label>
+            <label className="checkbox-item"><input type="checkbox" checked={newEmp.isAdminStaff} onChange={e => setNewEmp({ ...newEmp, isAdminStaff: e.target.checked })} />관리반</label>
+          </div>
+        </div>
+        <div className="modal-footer"><button className="btn-primary" onClick={handleAdd}>등록</button></div>
+      </div>
+    </div>
+  );
+}
+
+// --- Main App ---
 
 function App({ user }) {
   const [employees, setEmployees] = useState([]);
@@ -71,94 +170,112 @@ function App({ user }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDataInitialized, setIsDataInitialized] = useState(false);
-  const [syncStatus, setSyncStatus] = useState({ employees: 'loading', notes: 'loading', settings: 'loading' });
+  const [syncStatus, setSyncStatus] = useState({ data: 'loading' });
   
   const [activeTab, setActiveTab] = useState('roster');
   const [employeeTabTeam, setEmployeeTabTeam] = useState('');
-  const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState(null);
-  const [draggedIdx, setDraggedIdx] = useState(null);
   const [modalState, setModalState] = useState({ isOpen: false, slot: '', duty: '' });
-  const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
   const [noteTeamFilter, setNoteTeamFilter] = useState('');
+  const [newNote, setNewNote] = useState({ startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], employeeId: '', type: '육아시간', startTime: '07:30', endTime: '09:30', isAllDay: false });
 
   const [currentRoster, setCurrentRoster] = useState({
     date: new Date().toISOString().split('T')[0],
     shiftType: '야간',
     weather: '맑음',
-    metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0, dedicatedCount: 0, dayShiftOnlyCount: 0 },
+    metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', dedicatedCount: 0, dayShiftOnlyCount: 0 },
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
 
   useEffect(() => {
     if (!user) return;
     
-    // 감시 로직 강화
     const unsubSettings = onSnapshot(doc(db, 'settings', user.uid), (docSnap) => {
-      setSyncStatus(prev => ({ ...prev, settings: docSnap.metadata.fromCache ? 'cache' : 'server' }));
+      setSyncStatus(prev => ({ ...prev, data: docSnap.metadata.fromCache ? 'cache' : 'server' }));
       if (docSnap.exists()) {
-        setSettings({...DEFAULT_SETTINGS, ...docSnap.data()});
+        const data = docSnap.data();
+        setSettings({...DEFAULT_SETTINGS, ...data});
+        if (!currentRoster.metadata.teamName && data.teams?.length > 0) {
+          setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, teamName: data.teams[0].name } }));
+        }
       }
       setIsDataInitialized(true);
     });
 
     const unsubEmployees = onSnapshot(query(collection(db, 'employees'), where('userId', '==', user.uid)), (snapshot) => {
-      setSyncStatus(prev => ({ ...prev, employees: snapshot.metadata.fromCache ? 'cache' : 'server' }));
+      setSyncStatus(prev => ({ ...prev, data: snapshot.metadata.fromCache ? 'cache' : 'server' }));
       setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setIsLoading(false);
     });
 
     const unsubNotes = onSnapshot(query(collection(db, 'specialNotes'), where('userId', '==', user.uid)), (snapshot) => {
-      setSyncStatus(prev => ({ ...prev, notes: snapshot.metadata.fromCache ? 'cache' : 'server' }));
       setSpecialNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     return () => { unsubSettings(); unsubEmployees(); unsubNotes(); };
   }, [user]);
 
-  // 안전 저장 함수
   const safeSave = async (coll, id, data) => {
     try {
       setIsSyncing(true);
       await saveDocument(coll, id, { ...data, userId: user.uid });
     } catch (err) {
-      console.error(err);
-      alert(`[저장 실패] 서버에 연결할 수 없습니다.\n데이터는 현재 브라우저에만 남습니다.\n사유: ${err.message}`);
+      alert(`[저장 오류] 서버와 연결이 끊겼습니다. 사유: ${err.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const addEmployee = (data) => {
-    const docId = `${user.uid}_${Date.now()}`;
-    safeSave('employees', docId, { ...data, id: docId });
-    setIsAddingEmployee(false);
+  useEffect(() => {
+    if (!user || !isDataInitialized || isLoading) return;
+    const timer = setTimeout(() => safeSave('settings', user.uid, settings), 2000);
+    return () => clearTimeout(timer);
+  }, [settings]);
+
+  useEffect(() => {
+    if (!user || !isDataInitialized || isLoading || !currentRoster.metadata.teamName) return;
+    const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
+    const timer = setTimeout(() => safeSave('rosters', rosterId, { ...currentRoster, updatedAt: new Date().toISOString() }), 1500);
+    return () => clearTimeout(timer);
+  }, [currentRoster]);
+
+  const handleToggleStaff = (id) => {
+    const key = `${modalState.slot}_${modalState.duty}`;
+    setCurrentRoster(prev => {
+      const currentIds = prev.assignments[key] || [];
+      const newIds = currentIds.includes(id) ? currentIds.filter(i => i !== id) : [...currentIds, id];
+      return { ...prev, assignments: { ...prev.assignments, [key]: newIds } };
+    });
   };
 
-  const deleteEmployee = (id) => { 
-    if (window.confirm('삭제하시겠습니까?')) {
-      setIsSyncing(true);
-      removeDocument('employees', id).catch(err => alert(err.message)).finally(() => setIsSyncing(false));
-    }
+  const addNote = async () => {
+    if (!newNote.employeeId) return alert('직원을 선택하세요.');
+    const uniqueId = `${user.uid}_${Date.now()}`;
+    await safeSave('specialNotes', uniqueId, { ...newNote, date: newNote.startDate, id: uniqueId });
+    alert('특이사항 등록 완료');
   };
 
-  // UI 렌더링 생략 (기존 구조 유지)
-  if (isLoading || !isDataInitialized) return (<div className="loading-screen">로딩 중...</div>);
+  const deleteNote = (id) => { if(window.confirm('삭제?')) removeDocument('specialNotes', id); };
+
+  if (isLoading || !isDataInitialized) return (<div className="loading-screen">데이터 로드 중...</div>);
+
+  const currentTimeSlots = currentRoster.shiftType === '주간' ? settings.dayTimeSlots : settings.nightTimeSlots;
+  const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
+  const currentTeamEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName).sort((a,b) => getRankWeight(a.rank) - getRankWeight(b.rank));
 
   return (
     <div className="app-container">
-      {/* 상태 표시줄 */}
-      <div style={{ padding: '10px 15px', fontSize: '11px', background: '#2c3e50', color: '#fff', display: 'flex', gap: '20px', alignItems: 'center' }}>
+      {isSyncing && <div className="sync-indicator"><RefreshCw size={14} className="spin" /> 동기화 중...</div>}
+      
+      <div style={{ padding: '8px 15px', fontSize: '11px', background: '#2c3e50', color: '#fff', display: 'flex', gap: '20px', alignItems: 'center' }}>
         <div><strong>ID:</strong> {user.uid}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          {syncStatus.employees === 'server' ? <Wifi size={14} color="#2ecc71" /> : <WifiOff size={14} color="#e67e22" />}
-          <strong>데이터 연결:</strong> 
-          <span style={{ color: syncStatus.employees === 'server' ? '#2ecc71' : '#e67e22' }}>
-            {syncStatus.employees === 'server' ? '실시간 서버연결' : '오프라인(로컬데이터)'}
+          {syncStatus.data === 'server' ? <Wifi size={14} color="#2ecc71" /> : <WifiOff size={14} color="#e67e22" />}
+          <span style={{ color: syncStatus.data === 'server' ? '#2ecc71' : '#e67e22' }}>
+            {syncStatus.data === 'server' ? '실시간 서버연결됨' : '오프라인(내 컴퓨터에만 저장됨)'}
           </span>
         </div>
-        <div style={{ opacity: 0.7 }}>API: {import.meta.env.VITE_FIREBASE_API_KEY ? 'OK' : 'FAIL'}</div>
+        <div style={{ marginLeft: 'auto' }}>직원: {employees.length}명 / 특이사항: {specialNotes.length}건</div>
       </div>
 
       <header className="no-print">
@@ -168,36 +285,90 @@ function App({ user }) {
           <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원관리</button>
           <button onClick={() => setActiveTab('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
           <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'active' : ''}>설정</button>
-          <button onClick={() => auth.signOut()}>로그아웃</button>
+          <button onClick={() => auth.signOut()} className="logout-btn">로그아웃</button>
         </nav>
       </header>
 
       <main>
         {activeTab === 'roster' && (
           <div className="roster-view">
-            {/* Roster logic here */}
-            <div className="doc-title">{settings.stationName} 근무일지</div>
-            {/* ... Rest of the UI */}
-            <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-              현재 {employees.length}명의 직원이 등록되어 있습니다.
+            <div className="roster-header-inputs no-print">
+              <div className="header-card"><label>날짜</label><input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} /></div>
+              <div className="header-card"><label>팀 선택</label>
+                <div className="btn-group">{settings.teams.map(t => <button key={t.name} className={currentRoster.metadata.teamName === t.name ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: t.name}})}>{t.name}</button>)}</div>
+              </div>
+              <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
+            </div>
+
+            <div className="print-area real-style">
+              <div className="doc-title">{settings.stationName} 근무일지 ({formatDateWithDay(currentRoster.date)})</div>
+              <table className="roster-table real">
+                <thead><tr><th>구분</th>{currentTimeSlots.map(s => <th key={s}>{s}</th>)}</tr></thead>
+                <tbody>
+                  {settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType).map(dutyObj => (
+                    <tr key={dutyObj.name}>
+                      <td className="duty-label">{dutyObj.name}</td>
+                      {currentTimeSlots.map(slot => {
+                        const key = `${slot}_${dutyObj.name}`;
+                        const staff = (currentRoster.assignments[key] || []).map(id => employees.find(e => e.id === id)).filter(Boolean);
+                        return <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty: dutyObj.name })}>
+                          {staff.map(e => <div key={e.id}>{e.name}</div>)}
+                        </td>;
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
+
         {activeTab === 'employees' && (
           <div className="admin-section">
-            <button onClick={() => setIsAddingEmployee(true)}>직원 추가</button>
-            {/* List employees */}
-            <table>
-              <thead><tr><th>계급</th><th>성명</th><th>작업</th></tr></thead>
+            <div className="section-header-with-action"><h2>직원 명단 관리</h2><button className="btn-primary" onClick={() => setIsAddingEmployee(true)}><Plus size={16} /> 직원 추가</button></div>
+            <table className="admin-table">
+              <thead><tr><th>계급</th><th>성명</th><th>팀</th><th>관리반</th><th>작업</th></tr></thead>
               <tbody>
-                {employees.map(e => (
-                  <tr key={e.id}><td>{e.rank}</td><td>{e.name}</td><td><button onClick={() => deleteEmployee(e.id)}>삭제</button></td></tr>
+                {employees.map(emp => (
+                  <tr key={emp.id}><td>{emp.rank}</td><td>{emp.name}</td><td>{emp.team}</td><td>{emp.isAdminStaff ? 'O' : 'X'}</td><td><button onClick={() => removeDocument('employees', emp.id)}><Trash size={14} /></button></td></tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        {activeTab === 'notes' && (
+          <div className="admin-section">
+            <h2>특이사항 관리</h2>
+            <div className="note-form-v2">
+              <select onChange={e => setNoteTeamFilter(e.target.value)}><option value="">팀 선택</option>{settings.teams.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}</select>
+              <div className="staff-grid-mini">
+                {employees.filter(e => e.team === noteTeamFilter).map(e => <div key={e.id} className={newNote.employeeId === e.id ? 'selected' : ''} onClick={() => setNewNote({...newNote, employeeId: e.id})}>{e.name}</div>)}
+              </div>
+              <button className="btn-primary" onClick={addNote}>특이사항 등록</button>
+            </div>
+            <div className="notes-list">
+              {specialNotes.map(n => {
+                const emp = employees.find(e => e.id === n.employeeId);
+                return <div key={n.id} className="note-item">{emp?.name} - {n.type} ({n.date}) <button onClick={() => deleteNote(n.id)}><X size={14} /></button></div>;
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="admin-section">
+            <h2>환경 설정</h2>
+            <div className="settings-card">
+              <label>지구대 명칭</label>
+              <input type="text" value={settings.stationName} onChange={e => setSettings({...settings, stationName: e.target.value})} />
+            </div>
+          </div>
+        )}
       </main>
+
+      <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({...modalState, isOpen: false})} slot={modalState.slot} duty={modalState.duty} employees={employees} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes} settings={settings} onSelect={handleToggleStaff} />
+      <EmployeeAddModal isOpen={isAddingEmployee} settings={settings} onSave={(data) => { safeSave('employees', `${user.uid}_${Date.now()}`, data); setIsAddingEmployee(false); }} onClose={() => setIsAddingEmployee(false)} />
     </div>
   );
 }
