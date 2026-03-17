@@ -1,41 +1,8 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 공통: 인증된 사용자만 접근 가능
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // 문서의 소유자인지 확인
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // 설정 (settings): 문서 ID가 곧 UID임
-    match /settings/{userId} {
-      allow read, write: if isAuthenticated() && isOwner(userId);
-    }
-
-    // 직원 (employees): userId 필드로 구분
-    match /employees/{employeeId} {
-      allow read, write: if isAuthenticated() && (
-        isOwner(resource.data.userId) || isOwner(request.resource.data.userId)
-      );
-    }
-
-    // 특이사항 (specialNotes): userId 필드로 구분
-    match /specialNotes/{noteId} {
-      allow read, write: if isAuthenticated() && (
-        isOwner(resource.data.userId) || isOwner(request.resource.data.userId)
-      );
-    }
-
-    // 근무표 (rosters): 문서 ID가 UID로 시작하거나 userId 필드로 구분
-    match /rosters/{rosterId} {
-      allow read, write: if isAuthenticated() && (
-        rosterId.startsWith(request.auth.uid) || isOwner(resource.data.userId) || isOwner(request.resource.data.userId)
-      );
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
