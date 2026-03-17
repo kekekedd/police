@@ -572,9 +572,12 @@ function App({ user }) {
       await saveDocument('connection_test', testId, { userId: user.uid, time: new Date().toISOString() });
       // 즉시 지우기
       await removeDocument('connection_test', testId);
-      alert('✅ 서버 연결 성공! 이제 입력하는 데이터는 다른 기기에서도 보입니다.');
+      
+      // 서버에서 데이터 다시 불러오기 유도
+      window.location.reload(); 
+      alert('✅ 서버 연결 성공! 페이지를 새로고침하여 최신 데이터를 가져옵니다.');
     } catch (err) {
-      alert(`❌ 서버 연결 실패: ${err.message}\n인터넷이나 API 설정을 확인하세요.`);
+      alert(`❌ 서버 연결 실패: ${err.message}\n설정이나 인터넷을 확인하세요.`);
     } finally {
       setIsSyncing(false);
     }
