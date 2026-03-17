@@ -1,4 +1,3 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { 
   getFirestore, 
@@ -10,13 +9,13 @@ import {
   query, 
   where, 
   getDocs, 
-  updateDoc,
   enableIndexedDbPersistence
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  // 환경변수가 없을 경우를 대비해 직접 값을 입력하거나 대체 수단을 확보합니다.
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "", 
   authDomain: "watchful-idea-473105-n3.firebaseapp.com",
   projectId: "watchful-idea-473105-n3",
   storageBucket: "watchful-idea-473105-n3.firebasestorage.app",
@@ -29,43 +28,20 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// 오프라인 데이터 지속성 활성화
+// 오프라인 캐시 활성화
 enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-        console.warn('다중 탭이 열려 있어 캐시를 활성화할 수 없습니다.');
-    } else if (err.code === 'unimplemented') {
-        console.warn('현재 브라우저가 오프라인 캐시를 지원하지 않습니다.');
-    }
+    console.warn("Offline persistence notice:", err.code);
 });
-
-// Firestore helper functions
-export const getDocument = async (coll, id) => {
-  const docRef = doc(db, coll, id);
-  const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? docSnap.data() : null;
-};
 
 export const saveDocument = async (coll, id, data) => {
   const docRef = doc(db, coll, id);
   try {
-    // 10초 타임아웃 설정 (네트워크 먹통 대비)
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('네트워크 응답 시간 초과')), 10000)
-    );
-    await Promise.race([
-      setDoc(docRef, data, { merge: true }),
-      timeoutPromise
-    ]);
+    // 타임아웃을 제거하여 Firebase가 직접 에러를 던지게 합니다.
+    await setDoc(docRef, data, { merge: true });
   } catch (err) {
-    console.error("Firebase Save Error:", err);
+    console.error("Firebase 상세 에러:", err);
     throw err;
   }
-};
-
-export const getCollection = async (coll, field, operator, value) => {
-  const q = field ? query(collection(db, coll), where(field, operator, value)) : collection(db, coll);
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const removeDocument = async (coll, id) => {
