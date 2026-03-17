@@ -532,12 +532,17 @@ function App({ user }) {
   const currentTimeSlots = currentRoster.shiftType === '주간' ? (settings.dayTimeSlots || DAY_TIME_SLOTS) : (settings.nightTimeSlots || NIGHT_TIME_SLOTS);
   const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
   
+  // 지원근무자로 등록된 직원들 찾기 (특이사항 유형이 '지원근무'인 경우)
+  const supportDutyStaff = employees.filter(emp => 
+    todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무')
+  ).map(emp => ({ ...emp, isVolunteer: true, isSupportDuty: true }));
+
   // 현황판용: 전체 직원 대상 특이사항 분류
   const stationAllDayNotes = todaysNotes.filter(n => n.isAllDay);
-  const stationPartialNotes = todaysNotes.filter(n => !n.isAllDay);
   
-  // 사용자의 요청에 따라: 종일 특이사항은 '장기사고자'로, 그 외(시간대별)는 '사고자'로 분류
-  const stationLongTermCount = stationAllDayNotes.length;
+  // [수정] 지원근무는 장기사고자(통계)에서 제외
+  const stationLongTermCount = stationAllDayNotes.filter(n => n.type !== '지원근무').length;
+  const stationPartialNotes = todaysNotes.filter(n => !n.isAllDay);
   const stationAbsenteeCount = stationPartialNotes.length;
 
   // 근무표용: 현재 팀 직원 대상 모든 특이사항 (사고자 명단에 표시)
@@ -547,20 +552,23 @@ function App({ user }) {
   
   // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 + (주간일 경우 관리반 포함)
   const currentTeamEmployees = (() => {
-    // 1. 해당 팀의 일반 팀원 (종일 특이사항자 제외)
     const teamEmps = employees
       .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
       .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank));
 
-    // 2. 관리반 인원 (주간 근무일 때만, 종일 특이사항자 제외)
     const adminEmps = currentRoster.shiftType === '주간' 
       ? employees.filter(e => e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
                  .sort((a, b) => getRankWeight(a.rank) - getRankWeight(b.rank))
       : [];
 
-    // 3. 일반 팀원 뒤에 관리반을 붙여서 반환
     return [...teamEmps, ...adminEmps];
   })();
+
+  // [수정] 수동 입력 자원근무자 + 지원근무 특이사항 직원 합치기
+  const combinedVolunteers = [
+    ...(currentRoster.volunteerStaff || []),
+    ...supportDutyStaff
+  ];
   
   const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
 
@@ -753,8 +761,8 @@ function App({ user }) {
                                     <td>{absenteeEmp?.name || ''}</td>
                                     <td>{absentee?.type || ''}</td>
                                     {/* 자원근무자 */}
-                                    <td>{volunteer?.rank || ''}</td>
-                                    <td>{volunteer?.name || ''}</td>
+                                    <td>{combinedVolunteers[i]?.rank || ''}</td>
+                                    <td>{combinedVolunteers[i]?.name || ''}</td>
                                 </tr>
                             );
                         })}
@@ -772,12 +780,10 @@ function App({ user }) {
                         const key = `${slot}_${dutyObj.name}`;
                         if (dutyObj.name.includes('중점')) return <td key={slot} className="assignment-cell focus-cell" onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div></td>;
                         
-                        // [수정된 부분] 선택된 ID들을 전체 직원 명단(employees) 순서에 맞춰 정렬하여 표시
                         const staffIds = currentRoster.assignments[key] || [];
-                        const staff = [...employees, ...(currentRoster.volunteerStaff || [])]
+                        const staff = [...employees, ...combinedVolunteers]
                           .filter(e => staffIds.includes(e.id))
                           .sort((a, b) => {
-                            // 일반 직원은 계급순 정렬, 자원근무자는 뒤로
                             if (a.isVolunteer && !b.isVolunteer) return 1;
                             if (!a.isVolunteer && b.isVolunteer) return -1;
                             return getRankWeight(a.rank) - getRankWeight(b.rank);
@@ -790,7 +796,7 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...(currentRoster.volunteerStaff || [])]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} settings={settings} onSelect={handleToggleStaff} onDeleteVolunteer={handleDeleteVolunteer} />
+            <StaffSelectionModal isOpen={modalState.isOpen} onClose={() => setModalState({ ...modalState, isOpen: false })} slot={modalState.slot} duty={modalState.duty} employees={[...employees, ...combinedVolunteers]} specialNotes={todaysNotes} selectedIds={currentRoster.assignments[`${modalState.slot}_${modalState.duty}`] || []} currentAssignments={currentRoster.assignments} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} settings={settings} onSelect={handleToggleStaff} onDeleteVolunteer={handleDeleteVolunteer} />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
           </div>
