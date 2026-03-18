@@ -34,17 +34,25 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, dutyName = '', currentSlot = '') => {
   if (!employee) return { available: false, reason: '직원 정보 없음' };
   
-  // 고정 대기 직원 체크: '대기근무' row 이외의 다른 곳에 배치 시도 시 차단
-  // 또는 '대기근무' 이더라도 본인의 고정 시간대가 아닌 경우 차단
+  // 고정 대기 직원 체크
   if (employee.isFixedNightStandby && employee.fixedNightStandbySlot) {
     const isStandbyDuty = dutyName === '대기근무';
     const [fixedStart, fixedEnd] = employee.fixedNightStandbySlot.split('-');
     
-    // 고정 대기 시간과 현재 슬롯이 겹치는지 확인 (완전 포함되거나 겹치는지)
-    const matchesFixedSlot = isTimeOverlapping(slotStart, slotEnd, fixedStart, fixedEnd);
+    // 현재 슬롯이 본인의 고정 대기 시간과 겹치는지 확인
+    const isDuringFixedSlot = isTimeOverlapping(slotStart, slotEnd, fixedStart, fixedEnd);
 
-    if (!isStandbyDuty || !matchesFixedSlot) {
-      return { available: false, reason: `고정 대기(${employee.fixedNightStandbySlot})` };
+    if (isDuringFixedSlot) {
+      // 1. 고정 대기 시간대인 경우: '대기근무'만 가능
+      if (!isStandbyDuty) {
+        return { available: false, reason: `고정 대기 시간(${employee.fixedNightStandbySlot})` };
+      }
+    } else {
+      // 2. 고정 대기 시간대가 아닌 경우: '대기근무'는 불가능 (고정 시간 외 대기 방지)
+      if (isStandbyDuty) {
+        return { available: false, reason: `고정 시간 외 대기 불가` };
+      }
+      // 3. 그 외 일반 근무(순찰 등)는 허용됨 (return 없이 통과)
     }
   }
 
