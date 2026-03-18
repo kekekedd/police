@@ -12,7 +12,7 @@ const DAY_TIME_SLOTS = [
 
 const NIGHT_TIME_SLOTS = [
   "19:30-20:00", "20:00-22:00", "22:00-01:00", "01:00-02:00",
-  "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"
+  "02:00-04:00", "04:00-06:00", "06:00-07:00"
 ];
 
 const DEFAULT_DUTY_TYPES = [
@@ -610,6 +610,10 @@ function App({ user }) {
   };
 
   const handleRotateStandby = async () => {
+    if (!user || isLoading || !isDataInitialized) {
+      alert('데이터가 아직 로드 중입니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
     if (currentRoster.shiftType !== '야간') {
       alert('대기근무 순환은 야간 근무표에서만 사용 가능합니다.');
       return;
@@ -618,6 +622,7 @@ function App({ user }) {
     
     setIsSyncing(true);
     try {
+      console.log("순환 시작: 기준 날짜 =", currentRoster.date);
       const lookbackDays = [4, 8, 12, 16];
       const prevRosters = [];
       for (const d of lookbackDays) {
@@ -626,7 +631,10 @@ function App({ user }) {
         const dateStr = dateObj.toISOString().split('T')[0];
         const rId = `${user.uid}_${dateStr}_야간_${currentRoster.metadata.teamName}`;
         const snap = await getDoc(doc(db, 'rosters', rId));
-        if (snap.exists()) prevRosters.push({ days: d, data: snap.data() });
+        if (snap.exists()) {
+          console.log(`${d}일 전 기록 발견:`, dateStr);
+          prevRosters.push({ days: d, data: snap.data() });
+        }
       }
 
       if (prevRosters.length === 0) {
@@ -638,13 +646,15 @@ function App({ user }) {
       const todayRotationGroups = {};
       const eligibleEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby);
 
+      console.log("순환 대상자 수:", eligibleEmployees.length);
+
       eligibleEmployees.forEach(emp => {
         let found = false;
         for (const roster of prevRosters) {
           let lastGroup = roster.data.standbyRotationGroups?.[emp.id];
-          if (!lastGroup) {
+          if (!lastGroup && roster.data.assignments) {
             for (const gName in standbyGroups) {
-              if (standbyGroups[gName].some(slot => (roster.data.assignments?.[`${slot}_대기근무`] || []).includes(emp.id))) {
+              if (standbyGroups[gName].some(slot => (roster.data.assignments[`${slot}_대기근무`] || []).includes(emp.id))) {
                 lastGroup = gName;
                 break;
               }
@@ -652,7 +662,6 @@ function App({ user }) {
           }
 
           if (lastGroup) {
-            // [계산식] 오늘 시점의 그룹 = 마지막 확인된 그룹 + (경과일수 / 4) 단계만큼 순환
             const steps = roster.days / 4;
             let currentG = lastGroup;
             for (let i = 0; i < steps; i++) {
@@ -661,16 +670,18 @@ function App({ user }) {
               else if (currentG === 'C') currentG = 'A';
             }
             todayRotationGroups[emp.id] = currentG;
+            console.log(`직원 ${emp.name}: ${roster.days}일 전 ${lastGroup}조 확인 -> 오늘 ${currentG}조`);
             found = true;
             break;
           }
         }
         
-        // 과거 기록이 아예 없는 신규 인원은 인원 균형을 위해 임시 배정 (A, B, C 순)
         if (!found) {
           const counts = { A: 0, B: 0, C: 0 };
           Object.values(todayRotationGroups).forEach(g => counts[g]++);
-          todayRotationGroups[emp.id] = Object.keys(counts).reduce((a, b) => counts[a] <= counts[b] ? a : b);
+          const startG = Object.keys(counts).reduce((a, b) => counts[a] <= counts[b] ? a : b);
+          todayRotationGroups[emp.id] = startG;
+          console.log(`직원 ${emp.name}: 기록 없음 -> 신규 ${startG}조 할당`);
         }
       });
 
