@@ -585,7 +585,15 @@ function App({ user }) {
         };
       });
 
-      if (warnings && warnings.length > 0) {
+      // [수정] 순환 완료 후 '지원근무' 특이사항이 있는 직원이 있는지 체크
+      const supportDutyStaffForToday = employees.filter(emp => 
+        todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무' && n.supportShift === '야간')
+      );
+
+      if (supportDutyStaffForToday.length > 0) {
+        const names = supportDutyStaffForToday.map(s => `${s.rank} ${s.name}`).join(', ');
+        alert(`대기근무 순환 완료.\n\n[알림] 오늘 야간 지원근무자(${names})의 대기근무 배치가 필요합니다. 직접 배치를 진행해 주세요.`);
+      } else if (warnings && warnings.length > 0) {
         alert(`대기근무 순환 완료.\n\n주의사항:\n- ${warnings.join('\n- ')}`);
       } else {
         alert('대기근무 순환이 성공적으로 완료되었습니다.');
