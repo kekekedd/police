@@ -1046,7 +1046,13 @@ function App({ user }) {
                         }
                         
                         const staffIds = currentRoster.assignments[key] || [];
-                        const staff = [...employees, ...combinedVolunteers]
+                        // 중복 제거를 위해 Map 사용 (ID 기준)
+                        const allAvailableStaffMap = new Map();
+                        [...employees, ...combinedVolunteers].forEach(e => {
+                          allAvailableStaffMap.set(e.id, e);
+                        });
+
+                        const staff = Array.from(allAvailableStaffMap.values())
                           .filter(e => staffIds.includes(e.id))
                           .sort((a, b) => {
                             if (a.isVolunteer && !b.isVolunteer) return 1;
