@@ -3,6 +3,7 @@ import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, E
 import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
 import { collection, query, where, onSnapshot, doc, getDocs, orderBy, limit } from 'firebase/firestore';
+import './App.css';
 
 const DAY_TIME_SLOTS = [
   "07:30-08:00", "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00",
@@ -607,8 +608,8 @@ function App({ user }) {
       if (!copiedFocusArea) return;
 
       // 중복 장소 체크 (현재 시간대(slot)의 다른 순찰차 중점 구역 확인)
-      const isAlreadyUsed = settings.dutyTypes.some(d => 
-        d.name !== duty && currentRoster.focusAreas[`${slot}_${d.name}`] === copiedFocusArea
+      const isAlreadyUsed = settings.focusPlaces?.some(place => 
+        settings.dutyTypes.some(d => d.name !== duty && currentRoster.focusAreas[`${slot}_${d.name}`] === copiedFocusArea)
       );
 
       if (isAlreadyUsed) {
