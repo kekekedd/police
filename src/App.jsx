@@ -478,91 +478,97 @@ function App({ user }) {
     }
   };
 
-  // [JSON 데이터 직접 복구 함수] 사용자님이 제공한 JSON 기반으로 최종 복구
-  const handleJsonRestore = async () => {
-    if (!window.confirm('제공해주신 설정 데이터로 서버를 복구하시겠습니까?')) return;
+  // [지능형 딥 리커버리 함수] 데이터베이스 전수 조사하여 유실된 설정 역추적 복구
+  const handleDeepRecovery = async () => {
+    if (!window.confirm('데이터베이스 전체(근무표 등)를 분석하여 과거에 사용했던 모든 팀, 중점구역, 근무유형을 복구하시겠습니까?')) return;
     
     setIsSyncing(true);
     try {
-      const providedData = {
-        "stationName": "○○ 지구대",
-        "chiefName": "",
-        "dutyTypes": [
-          { "shift": "공통", "name": "상황근무" },
-          { "name": "서부 순21호", "shift": "공통" },
-          { "shift": "공통", "name": "순21호 중점" },
-          { "name": "서부 순23호", "shift": "공통" },
-          { "shift": "공통", "name": "순23호 중점" },
-          { "shift": "공통", "name": "서부 순24호" },
-          { "shift": "공통", "name": "순24호 중점" },
-          { "shift": "공통", "name": "서부 순25호" },
-          { "shift": "공통", "name": "순25호 중점" },
-          { "shift": "야간", "name": "도보" },
-          { "name": "대기근무", "shift": "야간" },
-          { "shift": "주간", "name": "관리반" },
-          { "name": "교대근무", "shift": "공통" }
-        ],
-        "teams": [
-          { "name": "2팀", "isVisible": true },
-          { "name": "1팀", "isVisible": true },
-          { "isVisible": true, "name": "3팀" },
-          { "name": "4팀", "isVisible": true },
-          { "name": "관리반", "isVisible": false }
-        ],
-        "focusPlaces": ["응암역", "새락골공원", "수색교회"],
-        "dayTimeSlots": ["07:30-08:00", "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00", "18:00-20:00"],
-        "nightTimeSlots": ["19:30-20:00", "20:00-22:00", "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"]
+      // 1. 모든 직원을 뒤져서 팀 목록 확보
+      const empSnap = await getDocs(query(collection(db, 'employees'), where('userId', '==', user.uid)));
+      const foundTeams = new Set();
+      empSnap.forEach(doc => {
+        const t = doc.data().team;
+        if (t) foundTeams.add(t);
+      });
+
+      // 2. 모든 근무표를 뒤져서 중점구역 및 근무유형 확보
+      const rosterSnap = await getDocs(query(collection(db, 'rosters'), where('userId', '==', user.uid)));
+      const foundFocusPlaces = new Set();
+      const foundDutyNames = new Set();
+
+      rosterSnap.forEach(doc => {
+        const data = doc.data();
+        // 중점구역(focusAreas)에 한 번이라도 입력된 적 있는 모든 장소 수집
+        if (data.focusAreas) {
+          Object.values(data.focusAreas).forEach(place => {
+            if (place && typeof place === 'string') foundFocusPlaces.add(place.trim());
+          });
+        }
+        // 배정표(assignments)에서 사용된 모든 근무 명칭 수집
+        if (data.assignments) {
+          Object.keys(data.assignments).forEach(key => {
+            const parts = key.split('_');
+            if (parts.length > 1) {
+              const dName = parts[1];
+              if (dName && dName !== '대기근무' && dName !== '관리반') foundDutyNames.add(dName);
+            }
+          });
+        }
+      });
+
+      // 3. 기존 주신 JSON의 기본 틀 + 찾아낸 데이터 병합
+      const baseDuties = [
+        { name: "상황근무", shift: "공통" },
+        { name: "서부 순21호", shift: "공통" },
+        { name: "순21호 중점", shift: "공통" },
+        { name: "서부 순23호", shift: "공통" },
+        { name: "순23호 중점", shift: "공통" },
+        { name: "서부 순24호", shift: "공통" },
+        { name: "순24호 중점", shift: "공통" },
+        { name: "서부 순25호", shift: "공통" },
+        { name: "순25호 중점", shift: "공통" },
+        { name: "도보", shift: "야간" },
+        { name: "대기근무", shift: "야간" },
+        { name: "관리반", shift: "주간" },
+        { name: "교대근무", shift: "공통" }
+      ];
+
+      // 발견된 새로운 근무유형 추가
+      const finalDutyTypes = [...baseDuties];
+      foundDutyNames.forEach(name => {
+        if (!finalDutyTypes.some(d => d.name === name)) {
+          finalDutyTypes.push({ name, shift: '공통' });
+        }
+      });
+
+      const finalSettings = {
+        ...settings,
+        teams: Array.from(foundTeams).map(name => ({ name, isVisible: true })),
+        focusPlaces: Array.from(foundFocusPlaces).sort(),
+        dutyTypes: finalDutyTypes,
+        dayTimeSlots: ["07:30-08:00","08:00-09:00","09:00-10:00","10:00-11:00","11:00-12:00","12:00-13:00","13:00-14:00","14:00-15:00","15:00-16:00","16:00-17:00","17:00-18:00","18:00-20:00"],
+        nightTimeSlots: ["19:30-20:00","20:00-22:00","22:00-01:00","01:00-02:00","02:00-04:00","04:00-06:00","06:00-07:00","07:00-08:00"]
       };
 
-      setSettings(prev => ({ ...prev, ...providedData }));
-      await saveDocument('settings', user.uid, { ...providedData, userId: user.uid });
-      lastServerSettings.current = JSON.stringify({ ...providedData, userId: user.uid });
+      // 관리반 팀 강제 포함
+      if (!foundTeams.has('관리반')) finalSettings.teams.push({ name: '관리반', isVisible: false });
+
+      setSettings(finalSettings);
+      await saveDocument('settings', user.uid, { ...finalSettings, userId: user.uid });
+      lastServerSettings.current = JSON.stringify(finalSettings);
       
-      alert('제공된 데이터로 복구가 완료되었습니다. 페이지를 새로고침 하세요.');
+      alert(`딥 리커버리 완료!\n- 복구된 팀: ${finalSettings.teams.length}개\n- 복구된 중점구역: ${finalSettings.focusPlaces.length}개\n를 근무표 기록에서 찾아내어 복원했습니다.`);
     } catch (e) {
+      console.error(e);
       alert('복구 실패: ' + e.message);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // 설정 자동 저장
-  useEffect(() => {
-    if (!user || !isDataInitialized || isLoading) return;
-    
-    // [강력한 안전장치] 서버 데이터가 아직 로드되지 않았거나, 기본값과 완벽히 일치하는데 
-    // lastServerSettings가 없는 경우(초기 상태)는 저장을 차단합니다.
-    if (!lastServerSettings.current && JSON.stringify(settings) === JSON.stringify(DEFAULT_SETTINGS)) {
-      return;
-    }
-
-    // 1. 서버 데이터와 동일하면 저장하지 않음
-    if (JSON.stringify(settings) === lastServerSettings.current) return;
-
-    // 2. 안전장치: 데이터가 급격히 줄어드는 경우 자동 저장을 차단
-    if (lastServerSettings.current) {
-      const lastData = JSON.parse(lastServerSettings.current);
-      const lastCount = (lastData.focusPlaces || []).length;
-      const currentCount = (settings.focusPlaces || []).length;
-      if (lastCount > 5 && currentCount === 0) {
-        console.warn("급격한 데이터 삭제 감지 - 자동 저장을 중단합니다.");
-        return;
-      }
-    }
-
-    const timer = setTimeout(() => {
-      setIsSyncing(true);
-      saveDocument('settings', user.uid, { ...settings, userId: user.uid })
-        .then(() => {
-          lastServerSettings.current = JSON.stringify(settings);
-        })
-        .catch((err) => {
-          console.error("환경 설정 자동 저장 실패:", err);
-        })
-        .finally(() => setIsSyncing(false));
-    }, 2000); 
-    return () => clearTimeout(timer);
-  }, [settings, user, isDataInitialized, isLoading]);
+  // [주의] 설정 자동 저장 로직을 완전히 삭제했습니다. (데이터 안정성 확보)
+  // 이제 설정은 사용자가 [서버에 설정 최종 저장] 버튼을 누를 때만 저장됩니다.
 
   // 근무표 명시적 저장 함수
   const handleSaveRoster = async (silent = false) => {
@@ -1408,8 +1414,8 @@ function App({ user }) {
             <div className="section-header-with-action">
               <h2>환경 설정</h2>
               <div className="action-btns">
-                <button className="btn-danger" onClick={handleJsonRestore} style={{ background: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <RefreshCw size={16} /> 제공된 JSON 데이터로 복구
+                <button className="btn-danger" onClick={handleDeepRecovery} style={{ background: '#ff5722', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={16} /> 모든 기록에서 설정 딥 리커버리
                 </button>
                 <button className="btn-primary" onClick={handleExplicitSaveSettings}>
                   <Save size={16} /> 서버에 설정 최종 저장
