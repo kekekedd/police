@@ -101,7 +101,7 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
         <div className="staff-grid scrollable modal-staff-grid" style={{ marginTop: '1rem' }}>
           {finalDisplayList.map(emp => {
             const [s, e] = slot.split('-');
-            const availability = checkAvailability(emp, s, e, specialNotes);
+            const availability = checkAvailability(emp, s, e, specialNotes, duty, slot);
             const isSelected = selectedIds.includes(emp.id);
             let otherDutyName = null;
             if (currentAssignments) {
@@ -594,10 +594,10 @@ function App({ user }) {
         const emp = employees.find(e => e.id === id);
         if (!emp) return;
 
-        // 특이사항 체크
-        const availability = checkAvailability(emp, s, end, todaysNotes);
+        // 특이사항 및 고정 대기 체크
+        const availability = checkAvailability(emp, s, end, todaysNotes, duty, slot);
         if (!availability.available) {
-          unavailableNames.push(`${emp.name}(특이사항: ${availability.reason})`);
+          unavailableNames.push(`${emp.name}(사유: ${availability.reason})`);
           return;
         }
 

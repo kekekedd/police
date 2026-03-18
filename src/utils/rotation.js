@@ -31,9 +31,23 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 };
 
 // 특정 직원의 시간대별 배치 가능 여부 계산
-export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) => {
+export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, dutyName = '', currentSlot = '') => {
   if (!employee) return { available: false, reason: '직원 정보 없음' };
   
+  // 고정 대기 직원 체크: '대기근무' row 이외의 다른 곳에 배치 시도 시 차단
+  // 또는 '대기근무' 이더라도 본인의 고정 시간대가 아닌 경우 차단
+  if (employee.isFixedNightStandby && employee.fixedNightStandbySlot) {
+    const isStandbyDuty = dutyName === '대기근무';
+    const [fixedStart, fixedEnd] = employee.fixedNightStandbySlot.split('-');
+    
+    // 고정 대기 시간과 현재 슬롯이 겹치는지 확인 (완전 포함되거나 겹치는지)
+    const matchesFixedSlot = isTimeOverlapping(slotStart, slotEnd, fixedStart, fixedEnd);
+
+    if (!isStandbyDuty || !matchesFixedSlot) {
+      return { available: false, reason: `고정 대기(${employee.fixedNightStandbySlot})` };
+    }
+  }
+
   // 야간 근무 제외 대상 체크
   if (employee.isNightShiftExcluded) {
     const toMinutes = (time) => {
@@ -122,7 +136,7 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
       // 해당 블록의 모든 슬롯에 대해 가용성 체크
       const isAvailable = block.slots.every(slot => {
         const [s, e] = slot.split('-');
-        return checkAvailability(candidate, s, e, specialNotes).available;
+        return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
       });
 
       if (isAvailable) {
