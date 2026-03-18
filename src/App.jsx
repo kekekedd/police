@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff, Copy, AlertTriangle } from 'lucide-react';
-import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
+import { rotateStandbyGroups, autoAssignRoster, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
 import { collection, query, where, onSnapshot, doc, getDocs, orderBy, limit } from 'firebase/firestore';
 import './App.css';
