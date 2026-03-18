@@ -111,10 +111,39 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
     return index === -1 ? 99 : index;
   };
 
-  // 1. 해당 팀의 순환 대상자만 추출 (고정 대기 제외, 계급/성명순 고정 정렬)
-  // [중요] 여기서 teamName으로 필터링하여 다른 팀원이 섞이지 않게 함
-  const rotationPool = employees
-    .filter(e => e.team === teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby)
+  const finalAssignments = [];
+  const usedIds = new Set();
+  const warnings = [];
+
+  // 1. 고정 대기 인원 우선 배치
+  // 팀원 중 고정 대기 설정이 있고, 오늘 특이사항(휴가 등)이 없는 경우 해당 시간대에 먼저 박아넣음
+  const teamEmps = employees.filter(e => e.team === teamName);
+  teamEmps.forEach(emp => {
+    if (emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
+      const [fs, fe] = emp.fixedNightStandbySlot.split('-');
+      // 오늘 해당 시간에 근무 가능한지 체크
+      const avail = checkAvailability(emp, fs, fe, specialNotes, '대기근무', emp.fixedNightStandbySlot);
+      if (avail.available) {
+        // 해당 슬롯이 포함된 블록의 모든 세부 슬롯에 배치
+        standbyBlocks.forEach(block => {
+          // 고정 시간이 블록 시간과 겹치거나 포함되는지 확인
+          const [bs, be] = block.label.split('-');
+          if (isTimeOverlapping(fs, fe, bs, be)) {
+            block.slots.forEach(s => {
+              finalAssignments.push({ slot: s, employeeId: emp.id });
+            });
+            usedIds.add(emp.id);
+          }
+        });
+      } else {
+        warnings.push(`${emp.name} (고정대기): 오늘 특이사항(${avail.reason})으로 인해 배치 제외됨`);
+      }
+    }
+  });
+
+  // 2. 순환 대상자 풀 (고정 대기 제외, 계급/성명순 고정 정렬)
+  const rotationPool = teamEmps
+    .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
     .sort((a, b) => {
       const weightA = getRankWeight(a.rank);
       const weightB = getRankWeight(b.rank);
@@ -122,45 +151,43 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
       return a.name.localeCompare(b.name);
     });
 
-  if (rotationPool.length === 0) return { assignments: [], warnings: [`${teamName}에 순환 대상 직원이 없습니다.`] };
+  if (rotationPool.length === 0 && usedIds.size === 0) {
+    return { assignments: [], warnings: [`${teamName}에 순환 대상 직원이 없습니다.`] };
+  }
 
-  // 2. 시작점 찾기: 이전 근무의 2조(01-04) 첫 번째 사람이 오늘의 1조(22-01) 시작점
+  // 3. 시작점 찾기: 이전 근무의 3조(04-07) 첫 번째 사람이 오늘의 1조(22-01) 시작점
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
     const prevAssignments = prevRoster.assignments;
-    // 이전 2조 명단 확인 (01:00-02:00_대기근무 키 사용)
-    const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || [];
-    const lastStartId = prevSecondGroupIds[0];
+    // 이전 3조 명단 확인 (04:00-06:00_대기근무 키 사용)
+    const prevThirdGroupIds = prevAssignments["04:00-06:00_대기근무"] || [];
+    const lastGroup3StartId = prevThirdGroupIds[0];
     
-    if (lastStartId) {
-      const foundIdx = rotationPool.findIndex(e => e.id === lastStartId);
+    if (lastGroup3StartId) {
+      const foundIdx = rotationPool.findIndex(e => e.id === lastGroup3StartId);
       if (foundIdx !== -1) {
-        startIndex = foundIdx; // 이전 2조 시작자가 오늘의 1조 시작자
+        startIndex = foundIdx; 
       }
     }
   }
 
-  const finalAssignments = [];
-  const warnings = [];
-  const usedIds = new Set();
-
-  // 조당 목표 인원 계산
+  // 4. 나머지 인원 조환 배치
   const countPerGroup = Math.floor(rotationPool.length / 3);
   const remainder = rotationPool.length % 3;
-
   let currentPoolIndex = startIndex;
 
-  // 3. 각 블록(조)별 배치 실행
   standbyBlocks.forEach((block, groupIdx) => {
+    // 이미 고정 대기자로 채워진 인원 수 확인
+    const alreadyAssignedCount = new Set(finalAssignments.filter(asgn => block.slots.includes(asgn.slot)).map(asgn => asgn.employeeId)).size;
     const targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
-    let assignedInGroup = 0;
+    
+    let assignedInGroup = alreadyAssignedCount;
     let checkedCount = 0;
 
     while (assignedInGroup < targetCount && checkedCount < rotationPool.length) {
       const candidate = rotationPool[currentPoolIndex];
       
       if (!usedIds.has(candidate.id)) {
-        // 가용성 체크
         const isAvailable = block.slots.every(slot => {
           const [s, e] = slot.split('-');
           return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
@@ -179,8 +206,8 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
       checkedCount++;
     }
 
-    if (assignedInGroup < targetCount) {
-      warnings.push(`${block.label} 인원 부족 (${assignedInGroup}/${targetCount})`);
+    if (assignedInGroup < targetCount && rotationPool.length > 0) {
+      warnings.push(`${block.label} 가용 인원 부족 (현재 ${assignedInGroup}/${targetCount})`);
     }
   });
 
