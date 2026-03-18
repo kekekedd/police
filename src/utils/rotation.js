@@ -116,17 +116,13 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
   const warnings = [];
 
   // 1. 고정 대기 인원 우선 배치
-  // 팀원 중 고정 대기 설정이 있고, 오늘 특이사항(휴가 등)이 없는 경우 해당 시간대에 먼저 박아넣음
   const teamEmps = employees.filter(e => e.team === teamName);
   teamEmps.forEach(emp => {
     if (emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
       const [fs, fe] = emp.fixedNightStandbySlot.split('-');
-      // 오늘 해당 시간에 근무 가능한지 체크
       const avail = checkAvailability(emp, fs, fe, specialNotes, '대기근무', emp.fixedNightStandbySlot);
       if (avail.available) {
-        // 해당 슬롯이 포함된 블록의 모든 세부 슬롯에 배치
         standbyBlocks.forEach(block => {
-          // 고정 시간이 블록 시간과 겹치거나 포함되는지 확인
           const [bs, be] = block.label.split('-');
           if (isTimeOverlapping(fs, fe, bs, be)) {
             block.slots.forEach(s => {
@@ -155,33 +151,57 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
     return { assignments: [], warnings: [`${teamName}에 순환 대상 직원이 없습니다.`] };
   }
 
-  // 3. 시작점 찾기: 이전 근무의 3조(04-07) 첫 번째 사람이 오늘의 1조(22-01) 시작점
+  // 3. 시작점(Anchor) 찾기
+  // 규칙: 이전 근무의 3조(04-07) 멤버들이 오늘의 1조(22-01)로 옵니다.
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
-    const prevAssignments = prevRoster.assignments;
-    // 이전 3조 명단 확인 (04:00-06:00_대기근무 키 사용)
-    const prevThirdGroupIds = prevAssignments["04:00-06:00_대기근무"] || [];
-    const lastGroup3StartId = prevThirdGroupIds[0];
+    const prevAsgn = prevRoster.assignments;
+    // 이전 3조(04-07)에 있었던 사람 중 현재 순환 풀에 있는 첫 번째 사람을 찾습니다.
+    const prevGroup3Ids = [
+      ...(prevAsgn["04:00-06:00_대기근무"] || []),
+      ...(prevAsgn["06:00-07:00_대기근무"] || [])
+    ];
     
-    if (lastGroup3StartId) {
-      const foundIdx = rotationPool.findIndex(e => e.id === lastGroup3StartId);
-      if (foundIdx !== -1) {
-        startIndex = foundIdx; 
+    let foundAnchor = false;
+    for (const id of prevGroup3Ids) {
+      const idx = rotationPool.findIndex(e => e.id === id);
+      if (idx !== -1) {
+        startIndex = idx;
+        foundAnchor = true;
+        break;
+      }
+    }
+
+    // 만약 이전 3조 인원이 모두 오늘 근무 불능이거나 풀에서 빠졌다면, 
+    // 이전 2조의 다음 사람을 찾는 등 순차적인 흐름을 유지해야 합니다.
+    if (!foundAnchor) {
+      const prevGroup2Ids = [
+        ...(prevAsgn["01:00-02:00_대기근무"] || []),
+        ...(prevAsgn["02:00-04:00_대기근무"] || [])
+      ];
+      for (let i = prevGroup2Ids.length - 1; i >= 0; i--) {
+        const idx = rotationPool.findIndex(e => e.id === prevGroup2Ids[i]);
+        if (idx !== -1) {
+          startIndex = (idx + 1) % rotationPool.length;
+          foundAnchor = true;
+          break;
+        }
       }
     }
   }
 
-  // 4. 나머지 인원 조환 배치
+  // 4. 나머지 인원 조별 배분 및 배치
+  // 전체 가용 인원을 3개 조에 골고루 분배합니다.
   const countPerGroup = Math.floor(rotationPool.length / 3);
   const remainder = rotationPool.length % 3;
   let currentPoolIndex = startIndex;
 
   standbyBlocks.forEach((block, groupIdx) => {
-    // 이미 고정 대기자로 채워진 인원 수 확인
-    const alreadyAssignedCount = new Set(finalAssignments.filter(asgn => block.slots.includes(asgn.slot)).map(asgn => asgn.employeeId)).size;
+    // 해당 조에 이미 배치된 고정 대기자 인원 확인
+    const assignedFixedIds = new Set(finalAssignments.filter(asgn => block.slots.includes(asgn.slot)).map(a => a.employeeId));
     const targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
     
-    let assignedInGroup = alreadyAssignedCount;
+    let assignedInGroup = assignedFixedIds.size;
     let checkedCount = 0;
 
     while (assignedInGroup < targetCount && checkedCount < rotationPool.length) {
@@ -206,8 +226,8 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
       checkedCount++;
     }
 
-    if (assignedInGroup < targetCount && rotationPool.length > 0) {
-      warnings.push(`${block.label} 가용 인원 부족 (현재 ${assignedInGroup}/${targetCount})`);
+    if (assignedInGroup < targetCount && rotationPool.some(e => !usedIds.has(e.id))) {
+      warnings.push(`${block.label} 인원 부족 (${assignedInGroup}/${targetCount})`);
     }
   });
 
@@ -219,7 +239,6 @@ export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNo
   const assignments = {};
   const focusAreas = {};
   const warnings = [];
-
   const teamName = currentRoster.metadata.teamName;
 
   // 1. 대기 근무 자동 순환 (야간인 경우)
@@ -233,23 +252,33 @@ export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNo
     warnings.push(...standbyWarnings);
   }
 
-  // 2. 가용 인원 파악 (특이사항 제외)
-  const isAvailable = (emp, slot) => {
-    const [s, e] = slot.split('-');
-    return checkAvailability(emp, s, e, specialNotes).available;
-  };
-
-  // 3. 기타 근무 자동 배치 (기본 프레임워크)
-  // 상황근무, 순찰차 등 일반 근무에 대해 남은 인원을 순차적으로 배치하는 로직의 기초입니다.
-  // (추후 상세 규칙에 따라 고도화 예정)
-  const otherDuties = dutyTypes.filter(d => d.name !== '대기근무' && !d.name.includes('중점'));
-  
-  // 간단한 순차 배치 예시
-  const teamMembers = employees
-    .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff)
+  // 2. 가용 인원 (대기 근무에 배치되지 않은 팀원들)
+  const usedInStandby = new Set(Object.values(assignments).flat());
+  const availableTeamEmps = employees
+    .filter(e => e.team === teamName && !e.isAdminStaff && !usedInStandby.has(e.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // TODO: 여기에 상세 업무 분장 규칙을 추가할 수 있습니다.
+  // 3. 일반 근무(순찰, 상황 등) 자동 배치 (기초 로직)
+  // 현재는 남은 인원을 위에서부터 순차적으로 채워넣습니다.
+  const dutyList = dutyTypes.filter(d => d.name !== '대기근무' && !d.name.includes('중점'));
+  let empIdx = 0;
+
+  timeSlots.forEach(slot => {
+    dutyList.forEach(duty => {
+      if (empIdx < availableTeamEmps.length) {
+        const candidate = availableTeamEmps[empIdx];
+        const [s, e] = slot.split('-');
+        if (checkAvailability(candidate, s, e, specialNotes, duty.name, slot).available) {
+          const key = `${slot}_${duty.name}`;
+          if (!assignments[key]) assignments[key] = [];
+          assignments[key].push(candidate.id);
+          // 실제로는 한 명의 직원이 여러 슬롯을 할 수 있으므로 idx 증가 로직은 규칙에 따라 조절 필요
+          // 여기서는 단순 데모용으로 순차 배치
+        }
+      }
+      empIdx = (empIdx + 1) % (availableTeamEmps.length || 1);
+    });
+  });
 
   return { assignments, focusAreas, warnings };
 };
