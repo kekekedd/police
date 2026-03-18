@@ -98,11 +98,11 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
 };
 
 // 야간 대기조 순환 로직 (3개조: 22-01, 01-04, 04-07)
-export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
+export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamName) => {
   const standbyBlocks = [
-    { label: "22:00-01:00", slots: ["22:00-01:00"], key: "22:00-01:00_대기근무" },
-    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"], key: "01:00-04:00_대기근무" }, // 대표키
-    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"], key: "04:00-07:00_대기근무" }
+    { label: "22:00-01:00", slots: ["22:00-01:00"] },
+    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"] },
+    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"] }
   ];
 
   const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
@@ -111,9 +111,10 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
     return index === -1 ? 99 : index;
   };
 
-  // 1. 순환 대상자 풀 (고정 대기 제외, 계급/성명순 고정 정렬)
+  // 1. 해당 팀의 순환 대상자만 추출 (고정 대기 제외, 계급/성명순 고정 정렬)
+  // [중요] 여기서 teamName으로 필터링하여 다른 팀원이 섞이지 않게 함
   const rotationPool = employees
-    .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
+    .filter(e => e.team === teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby)
     .sort((a, b) => {
       const weightA = getRankWeight(a.rank);
       const weightB = getRankWeight(b.rank);
@@ -121,19 +122,21 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
       return a.name.localeCompare(b.name);
     });
 
-  if (rotationPool.length === 0) return { assignments: [], warnings: ["순환 대상 직원이 없습니다."] };
+  if (rotationPool.length === 0) return { assignments: [], warnings: [`${teamName}에 순환 대상 직원이 없습니다.`] };
 
   // 2. 시작점 찾기: 이전 근무의 2조(01-04) 첫 번째 사람이 오늘의 1조(22-01) 시작점
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
     const prevAssignments = prevRoster.assignments;
-    // 01:00-02:00 또는 01:00-04:00 키에서 이전 2조 명단 확인
-    const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || prevAssignments["01:00-04:00_대기근무"] || [];
+    // 이전 2조 명단 확인 (01:00-02:00_대기근무 키 사용)
+    const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || [];
     const lastStartId = prevSecondGroupIds[0];
     
     if (lastStartId) {
       const foundIdx = rotationPool.findIndex(e => e.id === lastStartId);
-      if (foundIdx !== -1) startIndex = foundIdx;
+      if (foundIdx !== -1) {
+        startIndex = foundIdx; // 이전 2조 시작자가 오늘의 1조 시작자
+      }
     }
   }
 
@@ -151,16 +154,15 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
   standbyBlocks.forEach((block, groupIdx) => {
     const targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
     let assignedInGroup = 0;
-    let checkedCount = 0; // 무한 루프 방지
+    let checkedCount = 0;
 
     while (assignedInGroup < targetCount && checkedCount < rotationPool.length) {
       const candidate = rotationPool[currentPoolIndex];
       
       if (!usedIds.has(candidate.id)) {
-        // 모든 슬롯에 대해 가용성 체크
+        // 가용성 체크
         const isAvailable = block.slots.every(slot => {
           const [s, e] = slot.split('-');
-          // 대기근무 row 체크
           return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
         });
 
@@ -191,9 +193,11 @@ export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNo
   const focusAreas = {};
   const warnings = [];
 
+  const teamName = currentRoster.metadata.teamName;
+
   // 1. 대기 근무 자동 순환 (야간인 경우)
   if (currentRoster.shiftType === '야간') {
-    const { assignments: standbyAsgns, warnings: standbyWarnings } = rotateStandbyGroups(prevRoster, employees, specialNotes);
+    const { assignments: standbyAsgns, warnings: standbyWarnings } = rotateStandbyGroups(prevRoster, employees, specialNotes, teamName);
     standbyAsgns.forEach(asgn => {
       const key = `${asgn.slot}_대기근무`;
       if (!assignments[key]) assignments[key] = [];
