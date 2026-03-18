@@ -699,18 +699,39 @@ function App({ user }) {
     let curr = new Date(newNote.startDate);
     const end = new Date(newNote.endDate);
     const notesToSave = [];
+    const skippedDates = [];
 
     while (curr <= end) {
       const dateStr = curr.toISOString().split('T')[0];
-      const uniqueId = `${user.uid}_${dateStr}_${newNote.employeeId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-      notesToSave.push(saveDocument('specialNotes', uniqueId, { ...newNote, date: dateStr, id: uniqueId, userId: user.uid }));
+      
+      // 중복 체크: 동일 날짜, 동일 직원, 동일 유형 확인
+      const isDuplicate = specialNotes.some(n => 
+        n.date === dateStr && 
+        n.employeeId === newNote.employeeId && 
+        n.type === newNote.type
+      );
+
+      if (isDuplicate) {
+        skippedDates.push(dateStr);
+      } else {
+        const uniqueId = `${user.uid}_${dateStr}_${newNote.employeeId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        notesToSave.push(saveDocument('specialNotes', uniqueId, { ...newNote, date: dateStr, id: uniqueId, userId: user.uid }));
+      }
       curr.setDate(curr.getDate() + 1);
     }
 
     try {
-      await Promise.all(notesToSave);
+      if (notesToSave.length > 0) {
+        await Promise.all(notesToSave);
+        if (skippedDates.length > 0) {
+          alert(`일부 날짜(${skippedDates.length}건)는 이미 동일한 특이사항이 있어 제외하고 등록되었습니다.`);
+        } else {
+          alert('특이사항이 기간별로 등록되었습니다.');
+        }
+      } else {
+        alert('선택한 기간에 이미 동일한 특이사항이 모두 등록되어 있습니다.');
+      }
       setNewNote({ ...newNote, employeeId: '', isAllDay: false });
-      alert('특이사항이 기간별로 등록되었습니다.');
     } catch (e) {
       alert('저장 실패');
     } finally {
@@ -1209,47 +1230,72 @@ function App({ user }) {
                 </div>
 </div></div>
               
-              <div className="settings-card notes-list-card"><div className="card-header-with-action"><h3>특이사항 목록</h3><div className="date-nav"><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value})} /><span>의 목록</span></div></div><div className="notes-list-v2 scrollable">
-                {specialNotes.filter(n => n.date === newNote.startDate).length === 0 ? <div className="empty-state">목록 없음</div> : specialNotes.filter(n => n.date === newNote.startDate).map(n => {
-                  const emp = employees.find(e => e.id === n.employeeId);
-                  return (
-                    <div key={n.id} className="note-item-v2">
-                      {editingNoteId === n.id ? (
-                        <div className="edit-note-inline">
-                          <select value={editingNoteValue.type} onChange={e => setEditingNoteValue({...editingNoteValue, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                          {editingNoteValue.type === '지원근무' ? (
-                            <select value={editingNoteValue.supportShift} onChange={e => setEditingNoteValue({...editingNoteValue, supportShift: e.target.value})}>
-                              <option value="주간">주간 지원</option>
-                              <option value="야간">야간 지원</option>
-                            </select>
+              <div className="settings-card notes-list-card">
+                <div className="card-header-with-action">
+                  <h3>
+                    {newNote.employeeId 
+                      ? `${employees.find(e => e.id === newNote.employeeId)?.name}님의 특이사항 이력` 
+                      : '특이사항 목록'}
+                  </h3>
+                  <div className="date-nav">
+                    {!newNote.employeeId ? (
+                      <><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value})} /><span>의 목록</span></>
+                    ) : (
+                      <button className="btn-save-small" style={{ fontSize: '0.7rem', padding: '4px 8px' }} onClick={() => setNewNote({...newNote, employeeId: ''})}>전체 보기로 복귀</button>
+                    )}
+                  </div>
+                </div>
+                <div className="notes-list-v2 scrollable">
+                  {(() => {
+                    const filteredNotes = newNote.employeeId 
+                      ? specialNotes.filter(n => n.employeeId === newNote.employeeId).sort((a, b) => b.date.localeCompare(a.date))
+                      : specialNotes.filter(n => n.date === newNote.startDate);
+
+                    if (filteredNotes.length === 0) return <div className="empty-state">목록 없음</div>;
+
+                    return filteredNotes.map(n => {
+                      const emp = employees.find(e => e.id === n.employeeId);
+                      return (
+                        <div key={n.id} className="note-item-v2">
+                          {editingNoteId === n.id ? (
+                            <div className="edit-note-inline">
+                              <select value={editingNoteValue.type} onChange={e => setEditingNoteValue({...editingNoteValue, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                              {editingNoteValue.type === '지원근무' ? (
+                                <select value={editingNoteValue.supportShift} onChange={e => setEditingNoteValue({...editingNoteValue, supportShift: e.target.value})}>
+                                  <option value="주간">주간 지원</option>
+                                  <option value="야간">야간 지원</option>
+                                </select>
+                              ) : (
+                                !editingNoteValue.isAllDay && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                                    <span>~</span>
+                                    <input type="time" value={editingNoteValue.endTime} onChange={e => setEditingNoteValue({...editingNoteValue, endTime: e.target.value})} />
+                                  </div>
+                                )
+                              )}
+                              <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
+                              <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
+                            </div>
                           ) : (
-                            !editingNoteValue.isAllDay && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
-                                <span>~</span>
-                                <input type="time" value={editingNoteValue.endTime} onChange={e => setEditingNoteValue({...editingNoteValue, endTime: e.target.value})} />
-                              </div>
-                            )
+                            <><div className="note-info">
+                              {newNote.employeeId && <span className="note-date" style={{ fontWeight: 'bold', color: '#1a237e', marginRight: '8px', fontSize: '0.85rem' }}>{n.date}</span>}
+                              <span className="emp-name">{emp?.rank} {emp?.name}</span>
+                              <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
+                              <span className="note-time">
+                                {n.type === '지원근무' 
+                                  ? `${n.supportShift} 지원` 
+                                  : (n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`)}
+                              </span>
+                            </div>
+                            <div className="action-btns"><button className="edit-btn-icon" onClick={() => {setEditingNoteId(n.id); setEditingNoteValue(n);}}><Edit2 size={14} /></button><button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button></div></>
                           )}
-                          <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
-                          <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
                         </div>
-                      ) : (
-                        <><div className="note-info">
-                          <span className="emp-name">{emp?.rank} {emp?.name}</span>
-                          <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
-                          <span className="note-time">
-                            {n.type === '지원근무' 
-                              ? `${n.supportShift} 지원` 
-                              : (n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`)}
-                          </span>
-                        </div>
-                        <div className="action-btns"><button className="edit-btn-icon" onClick={() => {setEditingNoteId(n.id); setEditingNoteValue(n);}}><Edit2 size={14} /></button><button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button></div></>
-                      )}
-                    </div>
-                  );
-                })}
-              </div></div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
             </div>
           </div>
         )}
