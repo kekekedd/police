@@ -147,23 +147,31 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
       const employee = allEmployees.find(e => e.id === empId);
       if (!employee) return;
 
-      const isAvailable = slotsToFill.every(slot => {
-        const [start, end] = slot.split('-');
-        return checkAvailability(employee, start, end, specialNotesForToday).available;
-      });
+      // [개선] 모든 슬롯이 아닌, 가능한 슬롯에만 개별적으로 배치
+      let assignedAny = false;
+      let lastBlockedReason = "";
 
-      if (isAvailable) {
-        slotsToFill.forEach(slot => {
+      slotsToFill.forEach(slot => {
+        const [start, end] = slot.split('-');
+        const { available, reason } = checkAvailability(employee, start, end, specialNotesForToday);
+        
+        if (available) {
           const key = `${slot}_대기근무`;
           if (!newAssignments[key]) newAssignments[key] = [];
           if (!newAssignments[key].includes(empId)) {
             newAssignments[key].push(empId);
           }
-        });
+          assignedAny = true;
+        } else {
+          lastBlockedReason = reason;
+        }
+      });
+
+      if (assignedAny) {
         processedEmployeeIds.add(empId);
       } else {
-        const { reason } = checkAvailability(employee, slotsToFill[0].split('-')[0], slotsToFill[slotsToFill.length-1].split('-')[1], specialNotesForToday);
-        warnings.push(`${employee.name}님은 ${groupName}그룹 순서지만, ${reason}으로 배치 불가.`);
+        // 그룹 내의 단 하나의 시간대도 배정이 불가능한 경우에만 경고
+        warnings.push(`${employee.name}님은 ${groupName}그룹 순서지만, ${lastBlockedReason}으로 모든 시간대 배치 불가.`);
       }
     });
   }
