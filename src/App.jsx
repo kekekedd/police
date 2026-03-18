@@ -308,6 +308,11 @@ function App({ user }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDataInitialized, setIsDataInitialized] = useState(false);
   
+  // 변경 사항 감지 및 이탈 방지 상태
+  const [lastSavedRoster, setLastSavedRoster] = useState(null);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [pendingTab, setPendingTab] = useState(null);
+
   const [activeTab, setActiveTab] = useState('roster');
   const [employeeTabTeam, setEmployeeTabTeam] = useState('');
   const [isStaffOrderEditMode, setIsStaffOrderEditMode] = useState(false);
@@ -359,6 +364,8 @@ function App({ user }) {
     metadata: { chief: '', chiefStatus: '일근', teamLeader: '', teamName: '', totalCount: 0, teamCounts: {}, adminCount: 0, longTermAbsent: 0, dedicatedCount: 0, dayShiftOnlyCount: 0 },
     assignments: {}, focusAreas: {}, volunteerStaff: []
   });
+
+  const isRosterDirty = lastSavedRoster && JSON.stringify(currentRoster) !== lastSavedRoster;
 
   useEffect(() => {
     if (!user) return;
@@ -417,14 +424,40 @@ function App({ user }) {
     const unsubRoster = onSnapshot(doc(db, 'rosters', rosterId), (docSnap) => {
       if (docSnap.metadata.hasPendingWrites) return; // Skip local echoes
       if (docSnap.exists()) {
-        setCurrentRoster(prev => ({ ...prev, ...docSnap.data() }));
+        const data = docSnap.data();
+        setCurrentRoster(prev => ({ ...prev, ...data }));
+        setLastSavedRoster(JSON.stringify({ ...currentRoster, ...data }));
       } else {
         // Reset only assignments and focus areas, not the entire roster
-        setCurrentRoster(prev => ({ ...prev, assignments: {}, focusAreas: {}, volunteerStaff: [] }));
+        const resetData = { ...currentRoster, assignments: {}, focusAreas: {}, volunteerStaff: [] };
+        setCurrentRoster(resetData);
+        setLastSavedRoster(JSON.stringify(resetData));
       }
     });
     return () => unsubRoster();
   }, [user, currentRoster.date, currentRoster.shiftType, currentRoster.metadata.teamName, isDataInitialized]);
+
+  // 브라우저 이탈 방지 (새로고침, 닫기)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isRosterDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isRosterDirty]);
+
+  // 탭 이동 요청 핸들러
+  const requestTabChange = (tab) => {
+    if (activeTab === 'roster' && isRosterDirty) {
+      setPendingTab(tab);
+      setShowExitModal(true);
+    } else {
+      setActiveTab(tab);
+    }
+  };
 
   // 설정 자동 저장
   useEffect(() => {
@@ -438,17 +471,29 @@ function App({ user }) {
   }, [settings, user, isDataInitialized, isLoading]);
 
   // 근무표 명시적 저장 함수
-  const handleSaveRoster = async () => {
+  const handleSaveRoster = async (silent = false) => {
     if (!user || !currentRoster.metadata.teamName) return;
     try {
       setIsSyncing(true);
       const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
       await saveDocument('rosters', rosterId, { ...currentRoster, userId: user.uid, updatedAt: new Date().toISOString() });
-      alert('근무표가 서버에 안전하게 저장되었습니다.');
+      setLastSavedRoster(JSON.stringify(currentRoster));
+      if (!silent) alert('근무표가 서버에 안전하게 저장되었습니다.');
+      return true;
     } catch (err) {
       alert('저장 실패: ' + err.message);
+      return false;
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // 저장 후 나가기 처리
+  const handleSaveAndExit = async () => {
+    const success = await handleSaveRoster(true);
+    if (success) {
+      setShowExitModal(false);
+      if (pendingTab) setActiveTab(pendingTab);
     }
   };
 
@@ -730,10 +775,10 @@ function App({ user }) {
           {employees.length === 0 && <span className="demo-label">직원 데이터 없음</span>}
         </div>
         <nav>
-          <button onClick={() => setActiveTab('roster')} className={activeTab === 'roster' ? 'active' : ''}>근무표 작성</button>
-          <button onClick={() => setActiveTab('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
-          <button onClick={() => setActiveTab('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
-          <button onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'active' : ''}><Settings size={16} /> 환경 설정</button>
+          <button onClick={() => requestTabChange('roster')} className={activeTab === 'roster' ? 'active' : ''}>근무표 작성</button>
+          <button onClick={() => requestTabChange('employees')} className={activeTab === 'employees' ? 'active' : ''}>직원 관리</button>
+          <button onClick={() => requestTabChange('notes')} className={activeTab === 'notes' ? 'active' : ''}>특이사항</button>
+          <button onClick={() => requestTabChange('settings')} className={activeTab === 'settings' ? 'active' : ''}><Settings size={16} /> 환경 설정</button>
           <button onClick={() => { if(window.confirm('로그아웃 하시겠습니까?')) auth.signOut(); }} style={{ background: '#455a64', color: 'white', borderRadius: '8px', padding: '0.5rem 1rem', marginLeft: '1rem' }}>로그아웃</button>
         </nav>
       </header>
@@ -984,6 +1029,26 @@ function App({ user }) {
             />
             <FocusPlaceSelectionModal isOpen={focusModalState.isOpen} onClose={() => setFocusModalState({ ...focusModalState, isOpen: false })} slot={focusModalState.slot} duty={focusModalState.duty} focusPlaces={settings.focusPlaces || []} selectedValue={currentRoster.focusAreas[`${focusModalState.slot}_${focusModalState.duty}`] || ''} currentFocusAreas={currentRoster.focusAreas} dutyTypes={settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType)} onSelect={(val) => handleFocusChange(focusModalState.slot, focusModalState.duty, val)} />
             <VolunteerAddModal isOpen={volunteerAddModalOpen} onSave={(v) => setCurrentRoster(prev => ({ ...prev, volunteerStaff: [...(prev.volunteerStaff || []), v] }))} onClose={() => setVolunteerAddModalOpen(false)} />
+
+            {/* 이탈 방지 확인 모달 */}
+            {showExitModal && (
+              <div className="modal-overlay no-print">
+                <div className="modal-content exit-confirm-modal">
+                  <div className="modal-header">
+                    <h3>저장되지 않은 변경사항</h3>
+                    <button onClick={() => setShowExitModal(false)} className="close-btn"><X size={20} /></button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ margin: '1rem 0', lineHeight: '1.5' }}>수정 중인 근무일지 내용이 있습니다. 저장하고 이동하시겠습니까?</p>
+                  </div>
+                  <div className="modal-footer" style={{ gap: '0.5rem' }}>
+                    <button className="btn-outline" onClick={() => setShowExitModal(false)}>취소</button>
+                    <button className="btn-danger" onClick={() => { setShowExitModal(false); if(pendingTab) setActiveTab(pendingTab); }}>저장하지 않고 이동</button>
+                    <button className="btn-primary" onClick={handleSaveAndExit}><Save size={16} /> 저장 및 이동하기</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
