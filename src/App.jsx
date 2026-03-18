@@ -548,6 +548,56 @@ function App({ user }) {
     }
   };
 
+  const handleRotateStandby = async () => {
+    if (currentRoster.shiftType !== '야간') {
+      alert('대기근무 순환은 야간 근무표에서만 사용 가능합니다.');
+      return;
+    }
+    if (!window.confirm('4일 전 야간 근무표를 기준으로 대기근무를 순환 배치합니다. 기존 대기근무 데이터는 덮어쓰여집니다. 계속하시겠습니까?')) return;
+    
+    setIsSyncing(true);
+    try {
+      const prevDate = new Date(currentRoster.date);
+      prevDate.setDate(prevDate.getDate() - 4);
+      const prevDateStr = prevDate.toISOString().split('T')[0];
+      const prevRosterId = `${user.uid}_${prevDateStr}_야간_${currentRoster.metadata.teamName}`;
+      
+      const prevRosterDoc = await getDoc(doc(db, 'rosters', prevRosterId));
+      
+      if (!prevRosterDoc.exists()) {
+        alert(`4일 전(${prevDateStr}) 야간 근무기록이 없습니다. 순환할 수 없습니다.`);
+        setIsSyncing(false);
+        return;
+      }
+
+      const prevRosterData = prevRosterDoc.data();
+      const { assignments: newStandbyAssignments, warnings } = rotateNightStandby(prevRosterData, employees, todaysNotes, currentRoster.metadata.teamName);
+
+      setCurrentRoster(prev => {
+        const updatedAssignments = { ...prev.assignments };
+        // 기존 대기근무 삭제
+        Object.keys(updatedAssignments).forEach(key => {
+          if (key.endsWith('_대기근무')) delete updatedAssignments[key];
+        });
+        return {
+          ...prev,
+          assignments: { ...updatedAssignments, ...newStandbyAssignments }
+        };
+      });
+
+      if (warnings && warnings.length > 0) {
+        alert(`대기근무 순환 완료.\n\n주의사항:\n- ${warnings.join('\n- ')}`);
+      } else {
+        alert('대기근무 순환이 성공적으로 완료되었습니다.');
+      }
+    } catch (error) {
+      console.error("대기근무 순환 중 오류 발생:", error);
+      alert(`오류가 발생했습니다: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleToggleStaff = (id) => {
     const key = `${modalState.slot}_${modalState.duty}`;
     setCurrentRoster(prev => {
@@ -894,6 +944,11 @@ function App({ user }) {
               </div>
               <div className="header-actions">
                 <button className="btn-primary" onClick={() => handleSaveRoster()}><Save size={16} /> 저장하기</button>
+                {currentRoster.shiftType === '야간' && (
+                  <button className="btn-secondary" onClick={handleRotateStandby} style={{ background: '#4caf50', color: 'white' }} title="4일 전 야간근무를 기준으로 대기근무를 순환합니다.">
+                    <RefreshCw size={16} /> 대기근무 순환
+                  </button>
+                )}
                 <button className="btn-danger" onClick={handleResetRoster} style={{ background: '#ff4444', color: 'white', borderRadius: '8px', border: 'none', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><Trash size={16} /> 일지 초기화</button>
 
                 <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
