@@ -115,7 +115,7 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
   const usedIds = new Set();
   const warnings = [];
 
-  // 1. 고정 대기 인원 우선 배치
+  // 1. 고정 대기 인원 우선 배치 (기존 유지)
   const teamEmps = employees.filter(e => e.team === teamName);
   teamEmps.forEach(emp => {
     if (emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
@@ -131,13 +131,11 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
             usedIds.add(emp.id);
           }
         });
-      } else {
-        warnings.push(`${emp.name} (고정대기): 오늘 특이사항(${avail.reason})으로 인해 배치 제외됨`);
       }
     }
   });
 
-  // 2. 순환 대상자 풀 (고정 대기 제외, 계급/성명순 고정 정렬)
+  // 2. 순환 대상자 풀 (계급/성명순 고정 정렬)
   const rotationPool = teamEmps
     .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
     .sort((a, b) => {
@@ -151,82 +149,62 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
     return { assignments: [], warnings: [`${teamName}에 순환 대상 직원이 없습니다.`] };
   }
 
-  // 3. 시작점(Anchor) 찾기
-  // 규칙: 이전 근무의 3조(04-07) 멤버들이 오늘의 1조(22-01)로 옵니다.
+  // 3. 시작점(Anchor) 찾기: 이전 3조(04-07) -> 오늘 1조(22-01)
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
-    const prevAsgn = prevRoster.assignments;
-    // 이전 3조(04-07)에 있었던 사람 중 현재 순환 풀에 있는 첫 번째 사람을 찾습니다.
-    const prevGroup3Ids = [
-      ...(prevAsgn["04:00-06:00_대기근무"] || []),
-      ...(prevAsgn["06:00-07:00_대기근무"] || [])
-    ];
+    const prev = prevRoster.assignments;
+    // 이전 3조에 배치되었던 모든 ID 추출
+    const prevG3Ids = Object.keys(prev)
+      .filter(key => key.includes("04:00") || key.includes("06:00"))
+      .flatMap(key => prev[key] || []);
     
-    let foundAnchor = false;
-    for (const id of prevGroup3Ids) {
-      const idx = rotationPool.findIndex(e => e.id === id);
-      if (idx !== -1) {
-        startIndex = idx;
-        foundAnchor = true;
-        break;
-      }
-    }
-
-    // 만약 이전 3조 인원이 모두 오늘 근무 불능이거나 풀에서 빠졌다면, 
-    // 이전 2조의 다음 사람을 찾는 등 순차적인 흐름을 유지해야 합니다.
-    if (!foundAnchor) {
-      const prevGroup2Ids = [
-        ...(prevAsgn["01:00-02:00_대기근무"] || []),
-        ...(prevAsgn["02:00-04:00_대기근무"] || [])
-      ];
-      for (let i = prevGroup2Ids.length - 1; i >= 0; i--) {
-        const idx = rotationPool.findIndex(e => e.id === prevGroup2Ids[i]);
-        if (idx !== -1) {
-          startIndex = (idx + 1) % rotationPool.length;
-          foundAnchor = true;
-          break;
-        }
-      }
+    // 이전 3조였던 사람 중 현재 풀에 있는 첫 번째 사람 찾기
+    const anchorId = rotationPool.find(e => prevG3Ids.includes(e.id))?.id;
+    if (anchorId) {
+      startIndex = rotationPool.findIndex(e => e.id === anchorId);
+    } else {
+      // 3조 인원을 못 찾으면 2조의 마지막 사람 다음 순번으로 흐름 유지
+      const prevG2Ids = Object.keys(prev)
+        .filter(key => key.includes("01:00") || key.includes("02:00"))
+        .flatMap(key => prev[key] || []);
+      const lastG2Id = prevG2Ids[prevG2Ids.length - 1];
+      const lastG2Idx = rotationPool.findIndex(e => e.id === lastG2Id);
+      if (lastG2Idx !== -1) startIndex = (lastG2Idx + 1) % rotationPool.length;
     }
   }
 
-  // 4. 나머지 인원 조별 배분 및 배치
-  // 전체 가용 인원을 3개 조에 골고루 분배합니다.
-  const countPerGroup = Math.floor(rotationPool.length / 3);
-  const remainder = rotationPool.length % 3;
-  let currentPoolIndex = startIndex;
+  // 4. 순차적 배치 (누락 방지 로직)
+  const totalAvailable = rotationPool.length;
+  const countPerGroup = Math.floor(totalAvailable / 3);
+  const remainder = totalAvailable % 3;
+
+  let currentIdx = startIndex;
 
   standbyBlocks.forEach((block, groupIdx) => {
-    // 해당 조에 이미 배치된 고정 대기자 인원 확인
-    const assignedFixedIds = new Set(finalAssignments.filter(asgn => block.slots.includes(asgn.slot)).map(a => a.employeeId));
     const targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
-    
-    let assignedInGroup = assignedFixedIds.size;
-    let checkedCount = 0;
+    const assignedFixedCount = new Set(finalAssignments.filter(a => block.slots.includes(a.slot)).map(a => a.employeeId)).size;
+    let assignedInGroup = assignedFixedCount;
 
-    while (assignedInGroup < targetCount && checkedCount < rotationPool.length) {
-      const candidate = rotationPool[currentPoolIndex];
+    // 이 조에 필요한 인원이 채워질 때까지 풀을 최대 한 바퀴 돕니다.
+    for (let i = 0; i < rotationPool.length && assignedInGroup < targetCount; i++) {
+      const candidate = rotationPool[currentIdx];
       
       if (!usedIds.has(candidate.id)) {
-        const isAvailable = block.slots.every(slot => {
-          const [s, e] = slot.split('-');
-          return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
+        const isAvailable = block.slots.every(s => {
+          const [start, end] = s.split('-');
+          return checkAvailability(candidate, start, end, specialNotes, '대기근무', s).available;
         });
 
         if (isAvailable) {
-          block.slots.forEach(slot => {
-            finalAssignments.push({ slot, employeeId: candidate.id });
-          });
+          block.slots.forEach(s => finalAssignments.push({ slot: s, employeeId: candidate.id }));
           usedIds.add(candidate.id);
           assignedInGroup++;
         }
       }
-      
-      currentPoolIndex = (currentPoolIndex + 1) % rotationPool.length;
-      checkedCount++;
+      currentIdx = (currentIdx + 1) % rotationPool.length;
     }
 
-    if (assignedInGroup < targetCount && rotationPool.some(e => !usedIds.has(e.id))) {
+    if (assignedInGroup < targetCount) {
       warnings.push(`${block.label} 인원 부족 (${assignedInGroup}/${targetCount})`);
     }
   });
