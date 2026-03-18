@@ -554,125 +554,79 @@ function App({ user }) {
       alert('대기근무 순환은 야간 근무표에서만 사용 가능합니다.');
       return;
     }
-    if (!window.confirm('과거 근무표를 추적하여 대기근무를 순환 배치합니다. (휴가자 순번 자동 복귀 포함)')) return;
+    if (!window.confirm('과거 근무표를 추적하여 대기근무를 순환 배치합니다. (휴가 복귀자 자동 계산)')) return;
     
     setIsSyncing(true);
     try {
-      // 최근 3번의 야간 근무표(4일 전, 8일 전, 12일 전)를 가져와서 히스토리 파악
+      // 최근 4일, 8일, 12일 기록을 순차적으로 확인
       const lookbackDays = [4, 8, 12];
       const prevRosters = [];
-
-      for (const days of lookbackDays) {
-        const d = new Date(currentRoster.date);
-        d.setDate(d.getDate() - days);
-        const dStr = d.toISOString().split('T')[0];
-        const rId = `${user.uid}_${dStr}_야간_${currentRoster.metadata.teamName}`;
-        const rDoc = await getDoc(doc(db, 'rosters', rId));
-        if (rDoc.exists()) {
-          prevRosters.push({ days, data: rDoc.data() });
-        }
+      for (const d of lookbackDays) {
+        const dateObj = new Date(currentRoster.date);
+        dateObj.setDate(dateObj.getDate() - d);
+        const dateStr = dateObj.toISOString().split('T')[0];
+        const rId = `${user.uid}_${dateStr}_야간_${currentRoster.metadata.teamName}`;
+        const snap = await getDoc(doc(db, 'rosters', rId));
+        if (snap.exists()) prevRosters.push({ days: d, data: snap.data() });
       }
 
       if (prevRosters.length === 0) {
         alert("이전 야간 근무기록이 없어 순환할 수 없습니다.");
-        setIsSyncing(false);
         return;
       }
 
-      // 가장 최근 근무표(보통 4일 전)를 기준으로 기본 데이터 생성
-      const primaryPrevRoster = prevRosters[0].data;
-      
-      // [핵심] 휴가 등으로 누락된 직원의 히스토리를 보완한 '가상 이전 근무표' 생성
-      const virtualPrevRotationGroups = { ...(primaryPrevRoster.standbyRotationGroups || {}) };
-      const virtualPrevAssignments = { ...(primaryPrevRoster.assignments || {}) };
-      
-      const eligibleEmployees = employees.filter(e => 
-        e.team === currentRoster.metadata.teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby
-      );
+      // [핵심] 4일 전 시점의 '가상 이전 상태'를 완벽하게 재구성
+      const virtualPrevGroups = {};
+      const eligibleEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby);
 
       eligibleEmployees.forEach(emp => {
-        // 이미 가장 최근 기록에 정보가 있다면 패스
-        if (virtualPrevRotationGroups[emp.id]) return;
-        
-        // 배정표에서 찾기
-        let foundInPrimary = false;
-        for (const key in virtualPrevAssignments) {
-          if (key.endsWith('_대기근무') && virtualPrevAssignments[key].includes(emp.id)) {
-            foundInPrimary = true;
-            break;
-          }
-        }
-        if (foundInPrimary) return;
-
-        // 가장 최근 기록에 없는 경우, 더 과거 기록(8일 전, 12일 전)을 뒤져서 현재 시점(4일 전)의 가상 상태를 계산
-        for (let i = 1; i < prevRosters.length; i++) {
-          const { days, data } = prevRosters[i];
-          let historicalGroup = data.standbyRotationGroups?.[emp.id];
+        // 가장 최근(4일, 8일, 12일...) 기록 중 이 직원이 존재했던 가장 가까운 날을 찾음
+        for (const roster of prevRosters) {
+          let lastGroup = roster.data.standbyRotationGroups?.[emp.id];
           
-          if (!historicalGroup) {
-            for (const key in (data.assignments || {})) {
-              if (key.endsWith('_대기근무') && data.assignments[key].includes(emp.id)) {
-                // 시간대로 그룹 추측 (22-01: A, 01-04: B, 04-07: C)
-                if (key.startsWith('22:00')) historicalGroup = 'A';
-                else if (key.startsWith('01:00') || key.startsWith('02:00')) historicalGroup = 'B';
-                else if (key.startsWith('04:00') || key.startsWith('06:00')) historicalGroup = 'C';
+          // 그룹 정보가 없으면 배치표에서 추측
+          if (!lastGroup) {
+            for (const gName in standbyGroups) {
+              if (standbyGroups[gName].some(slot => (roster.data.assignments?.[`${slot}_대기근무`] || []).includes(emp.id))) {
+                lastGroup = gName;
                 break;
               }
             }
           }
 
-          if (historicalGroup) {
-            // 과거의 그룹을 4일 전 시점의 그룹으로 변환
-            // 8일 전 기록이면 1단계 순환, 12일 전 기록이면 2단계 순환
-            const steps = (days - 4) / 4;
-            let currentVirtualGroup = historicalGroup;
-            for (let s = 0; s < steps; s++) {
-              if (currentVirtualGroup === 'A') currentVirtualGroup = 'B';
-              else if (currentVirtualGroup === 'B') currentVirtualGroup = 'C';
-              else if (currentVirtualGroup === 'C') currentVirtualGroup = 'A';
+          if (lastGroup) {
+            // 찾은 과거 시점에서 4일 전(Virtual Previous)까지 몇 단계(Step)가 남았는지 계산
+            const stepsToVirtualPrev = (roster.days - 4) / 4;
+            let currentG = lastGroup;
+            for (let i = 0; i < stepsToVirtualPrev; i++) {
+              if (currentG === 'A') currentG = 'B';
+              else if (currentG === 'B') currentG = 'C';
+              else if (currentG === 'C') currentG = 'A';
             }
-            virtualPrevRotationGroups[emp.id] = currentVirtualGroup;
-            break;
+            virtualPrevGroups[emp.id] = currentG;
+            break; // 찾았으므로 다음 직원으로
           }
         }
       });
 
-      const virtualPrevRoster = {
-        ...primaryPrevRoster,
-        standbyRotationGroups: virtualPrevRotationGroups,
-        assignments: virtualPrevAssignments
-      };
-
-      const { assignments: newStandbyAssignments, warnings, standbyRotationGroups } = rotateNightStandby(virtualPrevRoster, employees, todaysNotes, currentRoster.metadata.teamName);
-
-      setCurrentRoster(prev => {
-        const updatedAssignments = { ...prev.assignments };
-        Object.keys(updatedAssignments).forEach(key => {
-          if (key.endsWith('_대기근무')) delete updatedAssignments[key];
-        });
-        return {
-          ...prev,
-          assignments: { ...updatedAssignments, ...newStandbyAssignments },
-          standbyRotationGroups: standbyRotationGroups
-        };
-      });
-
-      // 알림 및 경고 메시지 처리 (기존과 동일)
-      const supportDutyStaffForToday = employees.filter(emp => 
-        todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무' && n.supportShift === '야간')
+      // 재구성된 가상 4일 전 데이터를 엔진에 전달 (엔진이 여기서 한 단계 더 넘겨서 '오늘' 조를 결정함)
+      const { assignments: newStandbyAssignments, warnings, standbyRotationGroups } = rotateNightStandby(
+        { assignments: {}, standbyRotationGroups: virtualPrevGroups },
+        employees, todaysNotes, currentRoster.metadata.teamName
       );
 
-      if (supportDutyStaffForToday.length > 0) {
-        const names = supportDutyStaffForToday.map(s => `${s.rank} ${s.name}`).join(', ');
-        alert(`대기근무 순환 완료.\n\n[알림] 오늘 야간 지원근무자(${names})의 대기근무 배치가 필요합니다.`);
-      } else if (warnings && warnings.length > 0) {
-        alert(`대기근무 순환 완료.\n\n주의사항:\n- ${warnings.join('\n- ')}`);
-      } else {
-        alert('대기근무 순환이 성공적으로 완료되었습니다.');
-      }
+      setCurrentRoster(prev => {
+        const updated = { ...prev.assignments };
+        Object.keys(updated).forEach(k => k.endsWith('_대기근무') && delete updated[k]);
+        return { ...prev, assignments: { ...updated, ...newStandbyAssignments }, standbyRotationGroups };
+      });
+
+      if (warnings.length > 0) alert(`대기근무 순환 완료.\n주의사항:\n- ${warnings.join('\n- ')}`);
+      else alert('대기근무 순환이 성공적으로 완료되었습니다.');
+
     } catch (error) {
-      console.error("대기근무 순환 중 오류 발생:", error);
-      alert(`오류가 발생했습니다: ${error.message}`);
+      console.error(error);
+      alert(`오류: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
