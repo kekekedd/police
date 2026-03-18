@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
 import { isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
@@ -141,7 +141,6 @@ function StaffSelectionModal({ isOpen, onClose, slot, duty, employees, specialNo
 function EmployeeAddModal({ isOpen, settings, onSave, onClose }) {
   const [newEmp, setNewEmp] = useState({ rank: '경위', name: '', team: '', isStandbyRotationEligible: true, isFixedNightStandby: false, isNightShiftExcluded: false, isAdminStaff: false });
   const [startTime, setStartTime] = useState("");
-  const [endTime, setStartTime_] = useState("");
   const [end_Time, setEndTime] = useState("");
   useEffect(() => { if(isOpen && settings.teams.length > 0) setNewEmp(prev => ({...prev, team: settings.teams[0].name})); }, [isOpen, settings]);
   useEffect(() => {
@@ -320,6 +319,10 @@ function App({ user }) {
   const [volunteerAddModalOpen, setVolunteerAddModalOpen] = useState(false);
   const [noteTeamFilter, setNoteTeamFilter] = useState('');
   
+  // 복사/붙여넣기 관련 상태
+  const [copiedStaff, setCopiedStaff] = useState(null);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, slot: '', duty: '' });
+
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteValue, setEditingNoteValue] = useState(null);
 
@@ -359,14 +362,27 @@ function App({ user }) {
   useEffect(() => {
     if (!user) return;
     const unsubSettings = onSnapshot(doc(db, 'settings', user.uid), (docSnap) => {
+      if (docSnap.metadata.hasPendingWrites) return;
       if (docSnap.exists()) {
         const data = docSnap.data();
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
-        const visibleTeams = migratedTeams.filter(t => t.isVisible);
         
-        setSettings({...DEFAULT_SETTINGS, ...data, teams: migratedTeams});
-        setTempStationSettings({ stationName: data.stationName || DEFAULT_SETTINGS.stationName, chiefName: data.chiefName || DEFAULT_SETTINGS.chiefName });
+        setSettings(prev => {
+          // 중점 구역 등 배열 데이터가 누락되지 않도록 DEFAULT_SETTINGS와 병합
+          return {
+            ...DEFAULT_SETTINGS,
+            ...prev, // 현재 로컬 상태 유지 (저장 전 변경사항 보호)
+            ...data, // 서버 데이터 반영
+            teams: migratedTeams // 변환된 팀 목록 적용
+          };
+        });
+        
+        setTempStationSettings({ 
+          stationName: data.stationName || DEFAULT_SETTINGS.stationName, 
+          chiefName: data.chiefName || DEFAULT_SETTINGS.chiefName 
+        });
 
+        const visibleTeams = migratedTeams.filter(t => t.isVisible);
         if (!currentRoster.metadata.teamName && visibleTeams.length > 0) {
           const firstVisibleTeam = visibleTeams[0].name;
           setCurrentRoster(prev => ({ ...prev, metadata: { ...prev.metadata, teamName: firstVisibleTeam, chief: data.chiefName || prev.metadata.chief } }));
@@ -398,6 +414,7 @@ function App({ user }) {
     if (!user || !isDataInitialized || !currentRoster.metadata.teamName) return;
     const rosterId = `${user.uid}_${currentRoster.date}_${currentRoster.shiftType}_${currentRoster.metadata.teamName}`;
     const unsubRoster = onSnapshot(doc(db, 'rosters', rosterId), (docSnap) => {
+      if (docSnap.metadata.hasPendingWrites) return; // Skip local echoes
       if (docSnap.exists()) {
         setCurrentRoster(prev => ({ ...prev, ...docSnap.data() }));
       } else {
@@ -415,7 +432,7 @@ function App({ user }) {
       setIsSyncing(true);
       saveDocument('settings', user.uid, { ...settings, userId: user.uid })
         .finally(() => setIsSyncing(false));
-    }, 2000);
+    }, 1000); // 2000 -> 1000 (shorter debounce)
     return () => clearTimeout(timer);
   }, [settings, user, isDataInitialized, isLoading]);
 
@@ -474,6 +491,51 @@ function App({ user }) {
     setCurrentRoster(prev => ({ ...prev, focusAreas: { ...prev.focusAreas, [`${slot}_${duty}`]: value } }));
   };
 
+  // 우클릭 메뉴 핸들러
+  const handleContextMenu = (e, slot, duty) => {
+    e.preventDefault();
+    setContextMenu({
+      visible: true,
+      x: e.pageX,
+      y: e.pageY,
+      slot,
+      duty
+    });
+  };
+
+  // 클릭 시 메뉴 닫기
+  useEffect(() => {
+    const handleClick = () => setContextMenu(prev => ({ ...prev, visible: false }));
+    if (contextMenu.visible) {
+      window.addEventListener('click', handleClick);
+    }
+    return () => window.removeEventListener('click', handleClick);
+  }, [contextMenu.visible]);
+
+  const copyAssignments = () => {
+    const key = `${contextMenu.slot}_${contextMenu.duty}`;
+    const staffIds = currentRoster.assignments[key] || [];
+    if (staffIds.length === 0) {
+      alert('복사할 직원이 없습니다.');
+      return;
+    }
+    setCopiedStaff(staffIds);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const pasteAssignments = () => {
+    if (!copiedStaff) return;
+    const key = `${contextMenu.slot}_${contextMenu.duty}`;
+    setCurrentRoster(prev => ({
+      ...prev,
+      assignments: {
+        ...prev.assignments,
+        [key]: [...copiedStaff]
+      }
+    }));
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
   const addNote = async () => {
     if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
     if (newNote.startDate > newNote.endDate) return alert('시작일이 종료일보다 늦을 수 없습니다.');
@@ -520,11 +582,37 @@ function App({ user }) {
 
   const deleteEmployee = (id) => { if (window.confirm('삭제하시겠습니까?')) { setIsSyncing(true); removeDocument('employees', id).finally(() => setIsSyncing(false)); } };
 
-  const addTeam = () => { if (!newTeamName || settings.teams.some(t => t.name === newTeamName)) return; setSettings({ ...settings, teams: [...settings.teams, {name: newTeamName, isVisible: true}] }); setNewTeamName(''); };
-  const addFocusPlace = () => { if (!newFocusPlace || settings.focusPlaces.includes(newFocusPlace)) return; setSettings({ ...settings, focusPlaces: [...settings.focusPlaces, newFocusPlace] }); setNewFocusPlace(''); };
-  const addDutyType = () => { if (!newDutyType) return; setSettings({ ...settings, dutyTypes: [...settings.dutyTypes, { name: newDutyType, shift: newDutyShift }] }); setNewDutyType(''); };
-  const addDayTimeSlot = () => { if (!newDayTimeSlot) return; setSettings({ ...settings, dayTimeSlots: [...(settings.dayTimeSlots || DAY_TIME_SLOTS), newDayTimeSlot] }); setNewDayTimeSlot(''); };
-  const addNightTimeSlot = () => { if (!newNightTimeSlot) return; setSettings({ ...settings, nightTimeSlots: [...(settings.nightTimeSlots || NIGHT_TIME_SLOTS), newNightTimeSlot] }); setNewNightTimeSlot(''); };
+  const addTeam = () => { 
+    if (!newTeamName) return; 
+    setSettings(prev => {
+      if (prev.teams.some(t => t.name === newTeamName)) return prev;
+      return { ...prev, teams: [...prev.teams, {name: newTeamName, isVisible: true}] };
+    }); 
+    setNewTeamName(''); 
+  };
+  const addFocusPlace = () => { 
+    if (!newFocusPlace) return; 
+    setSettings(prev => {
+      if ((prev.focusPlaces || []).includes(newFocusPlace)) return prev;
+      return { ...prev, focusPlaces: [...(prev.focusPlaces || []), newFocusPlace] };
+    }); 
+    setNewFocusPlace(''); 
+  };
+  const addDutyType = () => { 
+    if (!newDutyType) return; 
+    setSettings(prev => ({ ...prev, dutyTypes: [...prev.dutyTypes, { name: newDutyType, shift: newDutyShift }] })); 
+    setNewDutyType(''); 
+  };
+  const addDayTimeSlot = () => { 
+    if (!newDayTimeSlot) return; 
+    setSettings(prev => ({ ...prev, dayTimeSlots: [...(prev.dayTimeSlots || DAY_TIME_SLOTS), newDayTimeSlot] })); 
+    setNewDayTimeSlot(''); 
+  };
+  const addNightTimeSlot = () => { 
+    if (!newNightTimeSlot) return; 
+    setSettings(prev => ({ ...prev, nightTimeSlots: [...(prev.nightTimeSlots || NIGHT_TIME_SLOTS), newNightTimeSlot] })); 
+    setNewNightTimeSlot(''); 
+  };
 
   const handleDragStart = (idx) => setDraggedIdx(idx);
   const handleDragOver = (e) => e.preventDefault();
@@ -602,13 +690,13 @@ function App({ user }) {
             <div className="roster-header-inputs no-print">
               <div className="header-card">
                 <label><Calendar size={14} /> 날짜</label>
-                <input type="date" value={currentRoster.date} onChange={e => setCurrentRoster({...currentRoster, date: e.target.value})} />
+                <input type="date" value={currentRoster.date} onChange={e => setCurrentRoster(prev => ({...prev, date: e.target.value}))} />
               </div>
               <div className="header-card">
                 <label>근무 구분</label>
                 <div className="toggle-buttons">
-                  <button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '주간'})}>주간</button>
-                  <button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, shiftType: '야간'})}>야간</button>
+                  <button className={currentRoster.shiftType === '주간' ? 'active' : ''} onClick={() => setCurrentRoster(prev => ({...prev, shiftType: '주간'}))}>주간</button>
+                  <button className={currentRoster.shiftType === '야간' ? 'active' : ''} onClick={() => setCurrentRoster(prev => ({...prev, shiftType: '야간'}))}>야간</button>
                 </div>
               </div>
               <div className="header-card">
@@ -618,7 +706,7 @@ function App({ user }) {
                     <button 
                       key={team.name} 
                       className={`selection-btn ${currentRoster.metadata.teamName === team.name ? 'active' : ''}`}
-                      onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamName: team.name}})}
+                      onClick={() => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, teamName: team.name}}))}
                     >
                       {team.name}
                     </button>
@@ -632,7 +720,7 @@ function App({ user }) {
                     <button 
                       key={w} 
                       className={`selection-btn ${currentRoster.weather === w ? 'active' : ''}`}
-                      onClick={() => setCurrentRoster({...currentRoster, weather: w})}
+                      onClick={() => setCurrentRoster(prev => ({...prev, weather: w}))}
                     >
                       {w}
                     </button>
@@ -642,27 +730,27 @@ function App({ user }) {
               <div className="header-card">
                 <label>지구대/파출소장</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chief: e.target.value}})} />
+                  <input type="text" placeholder="성명 입력" value={currentRoster.metadata.chief} onChange={e => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, chief: e.target.value}}))} />
                   <div className="toggle-buttons">
-                    <button className={currentRoster.metadata.chiefStatus === '일근' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '일근'}})}>일근</button>
-                    <button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, chiefStatus: '휴무'}})}>휴무</button>
+                    <button className={currentRoster.metadata.chiefStatus === '일근' ? 'active' : ''} onClick={() => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, chiefStatus: '일근'}}))}>일근</button>
+                    <button className={currentRoster.metadata.chiefStatus === '휴무' ? 'active' : ''} onClick={() => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, chiefStatus: '휴무'}}))}>휴무</button>
                   </div>
                 </div>
               </div>
               <div className="header-card">
                 <label>순찰팀장</label>
-                <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, teamLeader: e.target.value}})} />
+                <input type="text" placeholder="성명 입력" value={currentRoster.metadata.teamLeader} onChange={e => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, teamLeader: e.target.value}}))} />
               </div>
               <div className="header-card">
                 <label>특수 인원 관리</label>
                 <div className="input-row-mini">
                   <div className="input-col-mini" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <span style={{ fontSize: '0.65rem', color: '#666' }}>치안센터</span>
-                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dedicatedCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dedicatedCount: parseInt(e.target.value) || 0}})} />
+                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dedicatedCount || 0} onChange={e => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, dedicatedCount: parseInt(e.target.value) || 0}}))} />
                   </div>
                   <div className="input-col-mini" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <span style={{ fontSize: '0.65rem', color: '#666' }}>주간전종</span>
-                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dayShiftOnlyCount || 0} onChange={e => setCurrentRoster({...currentRoster, metadata: {...currentRoster.metadata, dayShiftOnlyCount: parseInt(e.target.value) || 0}})} />
+                    <input type="number" style={{ padding: '4px', height: '28px' }} value={currentRoster.metadata.dayShiftOnlyCount || 0} onChange={e => setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, dayShiftOnlyCount: parseInt(e.target.value) || 0}}))} />
                   </div>
                 </div>
               </div>
@@ -794,13 +882,43 @@ function App({ user }) {
                             return getRankWeight(a.rank) - getRankWeight(b.rank);
                           });
 
-                        return <td key={slot} className="assignment-cell" onClick={() => setModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-names-v">{staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}</div></td>;
+                        return (
+                          <td 
+                            key={slot} 
+                            className="assignment-cell" 
+                            onClick={() => setModalState({ isOpen: true, slot, duty: dutyObj.name })}
+                            onContextMenu={(e) => handleContextMenu(e, slot, dutyObj.name)}
+                          >
+                            <div className="staff-names-v">
+                              {staff.map(e => <div key={e.id} className="staff-name-v">{e.name}</div>)}
+                            </div>
+                          </td>
+                        );
                       })}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            {/* 커스텀 컨텍스트 메뉴 */}
+            {contextMenu.visible && (
+              <div 
+                className="custom-context-menu no-print"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button onClick={copyAssignments}><RefreshCw size={14} /> 명단 복사하기</button>
+                <button 
+                  onClick={pasteAssignments} 
+                  disabled={!copiedStaff}
+                  style={{ opacity: copiedStaff ? 1 : 0.5 }}
+                >
+                  <Save size={14} /> 명단 붙여넣기
+                </button>
+              </div>
+            )}
+
             <StaffSelectionModal 
               isOpen={modalState.isOpen} 
               onClose={() => setModalState({ ...modalState, isOpen: false })} 
@@ -960,26 +1078,26 @@ function App({ user }) {
           <div className="admin-section">
             <h2>환경 설정</h2>
             <div className="settings-grid">
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('station')}><div className="title-area"><h3>지구대 정보</h3><span className="hint-text-small">명칭 및 대장 성명</span></div>{expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.station && <div className="card-content-area active"><div className="card-header-with-action">{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings({ ...settings, ...tempStationSettings }); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div><div className="info-display"><div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div><div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div></div></div>}</div>
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('station')}><div className="title-area"><h3>지구대 정보</h3><span className="hint-text-small">명칭 및 대장 성명</span></div>{expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.station && <div className="card-content-area active"><div className="card-header-with-action">{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings(prev => ({ ...prev, ...tempStationSettings })); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div><div className="info-display"><div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div><div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div></div></div>}</div>
               
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('team')}><div className="title-area"><h3>팀 관리</h3><span className="hint-text-small">팀 목록 및 노출 설정</span></div>{expandedCards.team ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.team && <div className="card-content-area active"><div className="note-form"><input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="새 팀" onKeyDown={e => e.key === 'Enter' && addTeam()} /><button className="btn-primary" onClick={addTeam}>추가</button></div><div className="duty-type-list">{settings.teams.map((t, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.teams, (newList) => setSettings({...settings, teams: newList}))}>
-                {editingTeamIdx === i ? <div className="edit-inline-form"><input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings({...settings, teams:nt}); setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div></div> : <><div className="team-info-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><button className="visibility-btn" onClick={() => {const nt=[...settings.teams]; nt[i].isVisible = !nt[i].isVisible; setSettings({...settings, teams: nt});}} title={t.isVisible ? "근무표에 표시됨" : "근무표에서 숨김"}>{t.isVisible ? <Eye size={16} /> : <EyeOff size={16} style={{color: '#ccc'}} />}</button><span>{t.name}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i); setEditingTeamValue(t.name);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, teams: settings.teams.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('team')}><div className="title-area"><h3>팀 관리</h3><span className="hint-text-small">팀 목록 및 노출 설정</span></div>{expandedCards.team ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.team && <div className="card-content-area active"><div className="note-form"><input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="새 팀" onKeyDown={e => e.key === 'Enter' && addTeam()} /><button className="btn-primary" onClick={addTeam}>추가</button></div><div className="duty-type-list">{settings.teams.map((t, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.teams, (newList) => setSettings(prev => ({...prev, teams: newList})))}>
+                {editingTeamIdx === i ? <div className="edit-inline-form"><input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings(prev => ({...prev, teams:nt})); setEditingTeamIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings(prev => ({...prev, teams:nt})); setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div></div> : <><div className="team-info-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><button className="visibility-btn" onClick={() => {const nt=[...settings.teams]; nt[i].isVisible = !nt[i].isVisible; setSettings(prev => ({...prev, teams: nt}));}} title={t.isVisible ? "근무표에 표시됨" : "근무표에서 숨김"}>{t.isVisible ? <Eye size={16} /> : <EyeOff size={16} style={{color: '#ccc'}} />}</button><span>{t.name}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i); setEditingTeamValue(t.name);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({...prev, teams: prev.teams.filter((_,idx)=>idx!==i)})); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리</h3></div>{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.focusPlaces, (newList) => setSettings({...settings, focusPlaces: newList}))}>
-                {editingFocusIdx === i ? <div className="edit-inline-form"><input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings({...settings, focusPlaces:np}); setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{p}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i); setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({...settings, focusPlaces: settings.focusPlaces.filter((_,idx)=>idx!==i)}); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리</h3></div>{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.focusPlaces, (newList) => setSettings(prev => ({...prev, focusPlaces: newList})))}>
+                {editingFocusIdx === i ? <div className="edit-inline-form"><input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings(prev => ({...prev, focusPlaces:np})); setEditingFocusIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings(prev => ({...prev, focusPlaces:np})); setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{p}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i); setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({...prev, focusPlaces: prev.focusPlaces.filter((_,idx)=>idx!==i)})); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('duty')}><div className="title-area"><h3>근무 유형 관리</h3></div>{expandedCards.duty ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.duty && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} /><select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><button className="btn-primary" onClick={addDutyType}>추가</button></div><div className="duty-type-list">{settings.dutyTypes.map((d, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.dutyTypes, (newList) => setSettings({...settings, dutyTypes: newList}))}>
-                {editingDutyIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus /><select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><div className="action-btns"><button className="btn-save" onClick={()=>{const nd=[...settings.dutyTypes]; nd[i]={name:editingDutyValue, shift:editingDutyShift}; setSettings({...settings, dutyTypes:nd}); setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{d.name} ({d.shift})</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i); setEditingDutyValue(d.name); setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dutyTypes: settings.dutyTypes.filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('duty')}><div className="title-area"><h3>근무 유형 관리</h3></div>{expandedCards.duty ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.duty && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDutyType} onChange={e => setNewDutyType(e.target.value)} placeholder="새 유형" onKeyDown={e => e.key === 'Enter' && addDutyType()} /><select value={newDutyShift} onChange={e => setNewDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><button className="btn-primary" onClick={addDutyType}>추가</button></div><div className="duty-type-list">{settings.dutyTypes.map((d, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.dutyTypes, (newList) => setSettings(prev => ({...prev, dutyTypes: newList})))}>
+                {editingDutyIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDutyValue} onChange={e => setEditingDutyValue(e.target.value)} autoFocus /><select value={editingDutyShift} onChange={e => setEditingDutyShift(e.target.value)}><option value="공통">공통</option><option value="주간">주간</option><option value="야간">야간</option></select><div className="action-btns"><button className="btn-save" onClick={()=>{const nd=[...settings.dutyTypes]; nd[i]={name:editingDutyValue, shift:editingDutyShift}; setSettings(prev => ({...prev, dutyTypes:nd})); setEditingDutyIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDutyIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{d.name} ({d.shift})</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDutyIdx(i); setEditingDutyValue(d.name); setEditingDutyShift(d.shift);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({ ...prev, dutyTypes: prev.dutyTypes.filter((_, idx) => idx !== i) })); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('dayTime')}><div className="title-area"><h3>주간 시간대 관리</h3></div>{expandedCards.dayTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.dayTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDayTimeSlot} onChange={e => setNewDayTimeSlot(e.target.value)} placeholder="09:00-10:00" onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()} /><button className="btn-primary" onClick={addDayTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.dayTimeSlots || DAY_TIME_SLOTS, (newList) => setSettings({...settings, dayTimeSlots: newList}))}>
-                {editingDayTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings({...settings, dayTimeSlots:nts}); setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{s}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i); setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, dayTimeSlots: (settings.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('dayTime')}><div className="title-area"><h3>주간 시간대 관리</h3></div>{expandedCards.dayTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.dayTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newDayTimeSlot} onChange={e => setNewDayTimeSlot(e.target.value)} placeholder="09:00-10:00" onKeyDown={e => e.key === 'Enter' && addDayTimeSlot()} /><button className="btn-primary" onClick={addDayTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.dayTimeSlots || DAY_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.dayTimeSlots || DAY_TIME_SLOTS, (newList) => setSettings(prev => ({...prev, dayTimeSlots: newList})))}>
+                {editingDayTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingDayTimeValue} onChange={e => setEditingDayTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings(prev => ({...prev, dayTimeSlots:nts})); setEditingDayTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.dayTimeSlots]; nts[i]=editingDayTimeValue; setSettings(prev => ({...prev, dayTimeSlots:nts})); setEditingDayTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingDayTimeIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{s}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingDayTimeIdx(i); setEditingDayTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({ ...prev, dayTimeSlots: (prev.dayTimeSlots || DAY_TIME_SLOTS).filter((_, idx) => idx !== i) })); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('nightTime')}><div className="title-area"><h3>야간 시간대 관리</h3></div>{expandedCards.nightTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.nightTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} /><button className="btn-primary" onClick={addNightTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.nightTimeSlots || NIGHT_TIME_SLOTS, (newList) => setSettings({...settings, nightTimeSlots: newList}))}>
-                {editingNightTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings({...settings, nightTimeSlots:nts}); setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{s}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i); setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings({ ...settings, nightTimeSlots: (settings.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) }); }}><Trash size={14} /></button></div></>}
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('nightTime')}><div className="title-area"><h3>야간 시간대 관리</h3></div>{expandedCards.nightTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.nightTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} /><button className="btn-primary" onClick={addNightTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.nightTimeSlots || NIGHT_TIME_SLOTS, (newList) => setSettings(prev => ({...prev, nightTimeSlots: newList})))}>
+                {editingNightTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings(prev => ({...prev, nightTimeSlots:nts})); setEditingNightTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings(prev => ({...prev, nightTimeSlots:nts})); setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{s}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i); setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({ ...prev, nightTimeSlots: (prev.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) })); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
             </div>
           </div>

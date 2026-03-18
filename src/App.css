@@ -1579,3 +1579,44 @@ tr.dragging {
   padding: 0.8rem !important;
   font-size: 1rem !important;
 }
+
+.assignment-cell:hover {
+  background-color: rgba(26, 35, 126, 0.05);
+}
+
+.custom-context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  min-width: 140px;
+}
+
+.custom-context-menu button {
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  border-radius: 4px;
+}
+
+.custom-context-menu button:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1a237e;
+}
+
+.custom-context-menu button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
