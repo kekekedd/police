@@ -536,63 +536,68 @@ function App({ user }) {
     }
   };
 
-  // 야간 대기조 자동 순환 실행
-  const handleRotateStandby = async () => {
-    if (currentRoster.shiftType !== '야간') {
-      alert('야간 근무표에서만 대기조 순환 기능을 사용할 수 있습니다.');
+  // 근무 자동 생성 실행 (이전 이력 기반)
+  const handleGenerateRoster = async () => {
+    if (!currentRoster.metadata.teamName) {
+      alert('먼저 팀을 선택해주세요.');
       return;
     }
 
-    try {
-      setIsSyncing(true);
-      // 1. 동일 팀의 이전 가장 최근 야간 근무표 가져오기
-      const rostersRef = collection(db, 'rosters');
-      const q = query(
-        rostersRef,
-        where('userId', '==', user.uid),
-        where('metadata.teamName', '==', currentRoster.metadata.teamName),
-        where('shiftType', '==', '야간'),
-        where('date', '<', currentRoster.date),
-        orderBy('date', 'desc'),
-        limit(1)
-      );
+    if (window.confirm(`${currentRoster.date} [${currentRoster.shiftType}] 근무를 자동으로 생성하시겠습니까?\n(기존 배치된 내용은 초기화됩니다.)`)) {
+      try {
+        setIsSyncing(true);
+        // 1. 해당 팀의 동일 근무(주간/야간) 중 가장 최근의 과거 근무표 가져오기
+        const rostersRef = collection(db, 'rosters');
+        const q = query(
+          rostersRef,
+          where('userId', '==', user.uid),
+          where('metadata.teamName', '==', currentRoster.metadata.teamName),
+          where('shiftType', '==', currentRoster.shiftType),
+          where('date', '<', currentRoster.date),
+          orderBy('date', 'desc'),
+          limit(1)
+        );
 
-      const querySnapshot = await getDocs(q);
-      let prevRoster = null;
-      if (!querySnapshot.empty) {
-        prevRoster = querySnapshot.docs[0].data();
+        const querySnapshot = await getDocs(q);
+        let prevRoster = null;
+        if (!querySnapshot.empty) {
+          prevRoster = querySnapshot.docs[0].data();
+        }
+
+        // 2. 전체 근무 자동 생성 로직 실행
+        const dutyTypes = settings.dutyTypes.filter(d => d.shift === '공통' || d.shift === currentRoster.shiftType);
+        const { assignments, focusAreas, warnings } = autoAssignRoster(
+          currentRoster,
+          prevRoster,
+          employees,
+          todaysNotes,
+          dutyTypes,
+          currentTimeSlots
+        );
+
+        if (warnings.length > 0) {
+          alert(`주의사항:\n${warnings.join('\n')}`);
+        }
+
+        // 3. 결과 적용
+        setCurrentRoster(prev => ({
+          ...prev,
+          assignments: assignments,
+          focusAreas: focusAreas,
+          volunteerStaff: prev.volunteerStaff // 자원근무자는 유지
+        }));
+
+        alert('이전 근무 기록과 오늘의 특이사항을 분석하여 근무표가 생성되었습니다.');
+      } catch (err) {
+        console.error("근무 생성 오류:", err);
+        if (err.message.includes('index')) {
+          alert('서버 색인 생성 중입니다. 잠시 후 다시 시도하세요.');
+        } else {
+          alert('근무 생성 중 오류가 발생했습니다: ' + err.message);
+        }
+      } finally {
+        setIsSyncing(false);
       }
-
-      // 2. 순환 로직 계산
-      const { assignments, warnings } = rotateStandbyGroups(prevRoster, employees, todaysNotes);
-
-      if (warnings.length > 0 && !window.confirm(`일부 주의사항이 있습니다:\n${warnings.join('\n')}\n\n계속하시겠습니까?`)) {
-        return;
-      }
-
-      // 3. 결과 적용
-      setCurrentRoster(prev => {
-        const newAssignments = { ...prev.assignments };
-        assignments.forEach(asgn => {
-          const key = `${asgn.slot}_대기근무`;
-          // 기존 명단 유지하면서 추가 (중복 방지)
-          if (!(newAssignments[key] || []).includes(asgn.employeeId)) {
-            newAssignments[key] = [...(newAssignments[key] || []), asgn.employeeId];
-          }
-        });
-        return { ...prev, assignments: newAssignments };
-      });
-
-      alert('이전 근무를 기반으로 대기조가 순환 배치되었습니다.\n(기존 수동 배치와 겹치지 않게 추가되었습니다.)');
-    } catch (err) {
-      console.error("순환 배치 상세 오류:", err);
-      if (err.message.includes('index')) {
-        alert('필요한 데이터 인덱스가 서버에 생성되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.\n(Firestore 색인 생성 중일 수 있습니다.)');
-      } else {
-        alert('순환 배치 중 오류 발생: ' + err.message);
-      }
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -954,11 +959,9 @@ function App({ user }) {
               </div>
               <div className="header-actions">
                 <button className="btn-primary" onClick={() => handleSaveRoster()}><Save size={16} /> 저장하기</button>
-                {currentRoster.shiftType === '야간' && (
-                  <button className="btn-secondary" onClick={handleRotateStandby} style={{ background: '#673ab7' }}>
-                    <RefreshCw size={16} /> 대기조 순환
-                  </button>
-                )}
+                <button className="btn-secondary" onClick={handleGenerateRoster} style={{ background: '#2196f3' }}>
+                  <RefreshCw size={16} /> 근무 자동 생성
+                </button>
                 <button className="btn-danger" onClick={handleResetRoster} style={{ background: '#ff4444', color: 'white', borderRadius: '8px', border: 'none', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><Trash size={16} /> 일지 초기화</button>
 
                 <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>

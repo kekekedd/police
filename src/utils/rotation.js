@@ -184,3 +184,41 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
 
   return { assignments: finalAssignments, warnings };
 };
+
+// 전체 근무 자동 생성 로직
+export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNotes, dutyTypes, timeSlots) => {
+  const assignments = {};
+  const focusAreas = {};
+  const warnings = [];
+
+  // 1. 대기 근무 자동 순환 (야간인 경우)
+  if (currentRoster.shiftType === '야간') {
+    const { assignments: standbyAsgns, warnings: standbyWarnings } = rotateStandbyGroups(prevRoster, employees, specialNotes);
+    standbyAsgns.forEach(asgn => {
+      const key = `${asgn.slot}_대기근무`;
+      if (!assignments[key]) assignments[key] = [];
+      assignments[key].push(asgn.employeeId);
+    });
+    warnings.push(...standbyWarnings);
+  }
+
+  // 2. 가용 인원 파악 (특이사항 제외)
+  const isAvailable = (emp, slot) => {
+    const [s, e] = slot.split('-');
+    return checkAvailability(emp, s, e, specialNotes).available;
+  };
+
+  // 3. 기타 근무 자동 배치 (기본 프레임워크)
+  // 상황근무, 순찰차 등 일반 근무에 대해 남은 인원을 순차적으로 배치하는 로직의 기초입니다.
+  // (추후 상세 규칙에 따라 고도화 예정)
+  const otherDuties = dutyTypes.filter(d => d.name !== '대기근무' && !d.name.includes('중점'));
+  
+  // 간단한 순차 배치 예시
+  const teamMembers = employees
+    .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // TODO: 여기에 상세 업무 분장 규칙을 추가할 수 있습니다.
+
+  return { assignments, focusAreas, warnings };
+};
