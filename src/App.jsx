@@ -478,11 +478,46 @@ function App({ user }) {
     }
   };
 
+  // [긴급 복구 함수] 사용자님이 알려준 정보를 바탕으로 세팅 강제 재설정
+  const handleEmergencyRecovery = async () => {
+    if (!window.confirm('기존에 유실된 팀(관리반) 및 중점구역(응암역 등) 데이터를 복구하시겠습니까?')) return;
+    
+    const recoveredSettings = {
+      ...settings,
+      teams: [
+        ...settings.teams,
+        { name: '관리반', isVisible: true }
+      ].filter((v, i, a) => a.findIndex(t => t.name === v.name) === i), // 중복 제거
+      focusPlaces: [
+        ...(settings.focusPlaces || []),
+        '응암역', '새락골공원', '수색교회'
+      ].filter((v, i, a) => a.indexOf(v) === i) // 중복 제거
+    };
+
+    setSettings(recoveredSettings);
+    try {
+      setIsSyncing(true);
+      await saveDocument('settings', user.uid, { ...recoveredSettings, userId: user.uid });
+      lastServerSettings.current = JSON.stringify(recoveredSettings);
+      alert('데이터 복구가 완료되었습니다. 페이지를 새로고침해 주세요.');
+    } catch (e) {
+      alert('복구 실패: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // 설정 자동 저장
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
     
-    // 1. 서버 데이터와 동일하면 저장하지 않음 (무한 루프 및 덮어쓰기 방지)
+    // [강력한 안전장치] 서버 데이터가 아직 로드되지 않았거나, 기본값과 완벽히 일치하는데 
+    // lastServerSettings가 없는 경우(초기 상태)는 저장을 차단합니다.
+    if (!lastServerSettings.current && JSON.stringify(settings) === JSON.stringify(DEFAULT_SETTINGS)) {
+      return;
+    }
+
+    // 1. 서버 데이터와 동일하면 저장하지 않음
     if (JSON.stringify(settings) === lastServerSettings.current) return;
 
     // 2. 안전장치: 데이터가 급격히 줄어드는 경우 자동 저장을 차단
@@ -1353,9 +1388,14 @@ function App({ user }) {
           <div className="admin-section">
             <div className="section-header-with-action">
               <h2>환경 설정</h2>
-              <button className="btn-primary" onClick={handleExplicitSaveSettings}>
-                <Save size={16} /> 서버에 설정 최종 저장
-              </button>
+              <div className="action-btns">
+                <button className="btn-danger" onClick={handleEmergencyRecovery} style={{ background: '#f44336', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={16} /> 데이터 긴급 복구
+                </button>
+                <button className="btn-primary" onClick={handleExplicitSaveSettings}>
+                  <Save size={16} /> 서버에 설정 최종 저장
+                </button>
+              </div>
             </div>
             <div className="settings-grid">
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('station')}><div className="title-area"><h3>지구대 정보</h3><span className="hint-text-small">명칭 및 대장 성명</span></div>{expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.station && <div className="card-content-area active"><div className="card-header-with-action">{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings(prev => ({ ...prev, ...tempStationSettings })); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div><div className="info-display"><div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div><div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div></div></div>}</div>
