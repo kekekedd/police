@@ -484,16 +484,21 @@ function App({ user }) {
     
     setIsSyncing(true);
     try {
-      // 1. 모든 직원 데이터를 통해 팀 목록 추출
-      const empSnap = await getDocs(collection(db, 'employees'));
+      console.log("복구 시작: userId =", user.uid);
+      
+      // 1. 해당 사용자의 모든 직원 데이터를 통해 팀 목록 추출
+      const empQuery = query(collection(db, 'employees'), where('userId', '==', user.uid));
+      const empSnap = await getDocs(empQuery);
       const foundTeams = new Set();
       empSnap.forEach(doc => {
         const data = doc.data();
         if (data.team) foundTeams.add(data.team);
       });
+      console.log("찾은 팀들:", Array.from(foundTeams));
 
-      // 2. 모든 근무표 데이터를 통해 중점구역 및 근무유형 추출
-      const rosterSnap = await getDocs(collection(db, 'rosters'));
+      // 2. 해당 사용자의 모든 근무표 데이터를 통해 중점구역 및 근무유형 추출
+      const rosterQuery = query(collection(db, 'rosters'), where('userId', '==', user.uid));
+      const rosterSnap = await getDocs(rosterQuery);
       const foundFocusPlaces = new Set();
       const foundDutyNames = new Set();
 
@@ -508,40 +513,66 @@ function App({ user }) {
         // 근무유형 추출 (assignments 키값 분석: "시간-시간_근무명" 형태)
         if (data.assignments) {
           Object.keys(data.assignments).forEach(key => {
-            const dutyName = key.split('_')[1];
-            if (dutyName && dutyName !== '대기근무') foundDutyNames.add(dutyName);
+            const parts = key.split('_');
+            if (parts.length > 1) {
+              const dutyName = parts[1];
+              if (dutyName && dutyName !== '대기근무' && dutyName !== '관리반') foundDutyNames.add(dutyName);
+            }
           });
         }
       });
+      console.log("찾은 장소들:", Array.from(foundFocusPlaces));
+      console.log("찾은 근무들:", Array.from(foundDutyNames));
 
       // 3. 복구된 데이터로 세팅 구성
       const recoveredTeams = Array.from(foundTeams).map(name => ({ name, isVisible: true }));
       const recoveredFocusPlaces = Array.from(foundFocusPlaces);
-      const recoveredDutyTypes = Array.from(foundDutyNames).map(name => ({ name, shift: '공통' }));
+      
+      // 기본 근무 유형들 정의
+      const baseDuties = [
+        { name: "상황근무", shift: "공통" },
+        { name: "서부 순21호", shift: "공통" },
+        { name: "순21호 중점", shift: "공통" },
+        { name: "서부 순23호", shift: "공통" },
+        { name: "순23호 중점", shift: "공통" },
+        { name: "서부 순24호", shift: "공통" },
+        { name: "순24호 중점", shift: "공통" },
+        { name: "서부 순25호", shift: "공통" },
+        { name: "순25호 중점", shift: "공통" },
+        { name: "도보", shift: "공통" },
+        { name: "대기근무", shift: "공통" },
+        { name: "관리반", shift: "주간" }
+      ];
 
-      // 만약 '관리반'이 누락되었다면 추가
-      if (!foundTeams.has('관리반')) recoveredTeams.push({ name: '관리반', isVisible: true });
+      // 찾은 근무 명칭 중 기본에 없는 것들을 추가
+      const finalDutyTypes = [...baseDuties];
+      foundDutyNames.forEach(name => {
+        if (!finalDutyTypes.some(d => d.name === name)) {
+          finalDutyTypes.push({ name, shift: '공통' });
+        }
+      });
+
+      // 만약 '관리반' 팀이 누락되었다면 추가
+      if (!foundTeams.has('관리반')) {
+        recoveredTeams.push({ name: '관리반', isVisible: true });
+      }
 
       const finalSettings = {
         ...settings,
         teams: recoveredTeams.length > 0 ? recoveredTeams : settings.teams,
         focusPlaces: recoveredFocusPlaces.length > 0 ? recoveredFocusPlaces : settings.focusPlaces,
-        dutyTypes: recoveredDutyTypes.length > 0 ? [
-          ...recoveredDutyTypes,
-          { name: '대기근무', shift: '공통' },
-          { name: '관리반', shift: '주간' }
-        ] : settings.dutyTypes
+        dutyTypes: finalDutyTypes
       };
 
-      // 중복 제거 및 최종 저장
+      // 최종 저장
       setSettings(finalSettings);
       await saveDocument('settings', user.uid, { ...finalSettings, userId: user.uid });
       lastServerSettings.current = JSON.stringify(finalSettings);
       
-      alert(`복구 완료!\n- 팀: ${recoveredTeams.length}개\n- 중점구역: ${recoveredFocusPlaces.length}개\n- 근무유형: ${recoveredDutyNames.size}개 를 찾아내어 복구했습니다.`);
+      alert(`복구 완료!\n- 팀: ${recoveredTeams.length}개\n- 중점구역: ${recoveredFocusPlaces.length}개\n- 근무유형: ${foundDutyNames.size}개를 복원했습니다.`);
     } catch (e) {
-      console.error(e);
-      alert('복구 중 오류 발생: ' + e.message);
+      console.error("복구 에러 상세:", e);
+      alert(`복구 중 오류 발생: ${e.code || e.message}\n상세: ${e.message}`);
     } finally {
       setIsSyncing(false);
     }
