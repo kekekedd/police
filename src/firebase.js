@@ -26,8 +26,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-// 'police' 데이터베이스를 명시적으로 사용하도록 수정합니다.
-export const db = getFirestore(app, "police");
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 
 // [수습책 1] 오프라인 저장소(캐시) 다시 활성화
