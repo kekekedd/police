@@ -2,23 +2,35 @@
  * 지구대/파출소 근무표 로직 유틸리티
  */
 
-// 시간 겹침 검사 함수
+// 시간 겹침 검사 함수 (경계값 포함하지 않음: 06:00 종료와 06:00 시작은 겹치지 않음)
 export const isTimeOverlapping = (start1, end1, start2, end2) => {
   if (!start1 || !end1 || !start2 || !end2) return false;
   const toMinutes = (time) => {
-    const [h, m] = time.split(':').map(Number);
-    return h * 60 + (m || 0);
+    const parts = time.split(':').map(Number);
+    const h = parts[0];
+    const m = parts.length > 1 ? parts[1] : 0;
+    return h * 60 + m;
   };
   let s1 = toMinutes(start1);
   let e1 = toMinutes(end1);
   let s2 = toMinutes(start2);
   let e2 = toMinutes(end2);
+  
+  // 익일 처리
   if (e1 <= s1) e1 += 24 * 60;
   if (e2 <= s2) e2 += 24 * 60;
-  const overlap = (a_s, a_e, b_s, b_e) => Math.max(a_s, b_s) < Math.min(a_e, b_e);
+  
+  const overlap = (as, ae, bs, be) => {
+    // 두 구간 [as, ae]와 [bs, be]가 겹치려면:
+    // 시작점 중 큰 값이 종료점 중 작은 값보다 작아야 함 (등호 제외)
+    return Math.max(as, bs) < Math.min(ae, be);
+  };
+
   if (overlap(s1, e1, s2, e2)) return true;
-  if (overlap(s1, e1, s2 + 24 * 60, e2 + 24 * 60)) return true;
+  // 24시간 순환 고려
   if (overlap(s1 + 24 * 60, e1 + 24 * 60, s2, e2)) return true;
+  if (overlap(s1, e1, s2 + 24 * 60, e2 + 24 * 60)) return true;
+  
   return false;
 };
 
@@ -27,27 +39,17 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
   if (!employee) return { available: false, reason: '정보없음' };
 
   // 대기근무 전역 제한 (07:00 ~ 08:00 배정 금지)
-  if (dutyName === '대기근무' && slotStart === '07:00' && slotEnd === '08:00') {
-    return { available: false, reason: '배정금지' };
+  if (dutyName === '대기근무') {
+    if (isTimeOverlapping(slotStart, slotEnd, "07:00", "08:00")) {
+      return { available: false, reason: '배정금지' };
+    }
   }
 
   // 야간 근무 제외자 확인
   if (employee.isNightShiftExcluded) {
-    const toMin = (t) => { 
-      const parts = t.split(':');
-      const h = Number(parts[0]);
-      const m = parts.length > 1 ? Number(parts[1]) : 0;
-      return h * 60 + m; 
-    };
-    const s = toMin(slotStart);
-    let e = toMin(slotEnd);
-    if (e <= s) e += 24 * 60;
-    const nightStart = 19 * 60; // 19:00
-    const nightEnd = (8 * 60 + 30) + 24 * 60; // 익일 08:30
-    const overlapsWithNight = (startTime, endTime) => Math.max(startTime, nightStart) < Math.min(endTime, nightEnd);
-    
-    if (overlapsWithNight(s, e) || overlapsWithNight(s + 24*60, e + 24*60)) {
-        return { available: false, reason: '야간제외' };
+    // 야간 시간 정의: 19:00 ~ 익일 08:30
+    if (isTimeOverlapping(slotStart, slotEnd, "19:00", "08:30")) {
+      return { available: false, reason: '야간제외' };
     }
   }
 
@@ -55,8 +57,14 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
   const notes = specialNotes.filter(n => n.employeeId === employee.id);
   for (const n of notes) {
     if (n.type === '지원근무') continue;
-    if (['휴가', '병가', '기타'].includes(n.type) || n.isAllDay) return { available: false, reason: n.type };
-    if (isTimeOverlapping(slotStart, slotEnd, n.startTime, n.endTime)) return { available: false, reason: n.type };
+    // 종일 특이사항
+    if (['휴가', '병가', '기타'].includes(n.type) || n.isAllDay) {
+      return { available: false, reason: n.type };
+    }
+    // 시간제 특이사항 (육아시간 등)
+    if (isTimeOverlapping(slotStart, slotEnd, n.startTime, n.endTime)) {
+      return { available: false, reason: n.type };
+    }
   }
   
   return { available: true };
