@@ -376,13 +376,15 @@ function App({ user }) {
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
         
         setSettings(prev => {
-          // 중점 구역 등 배열 데이터가 누락되지 않도록 DEFAULT_SETTINGS와 병합
-          return {
+          // 서버 데이터(data)를 최우선으로 반영하고, 누락된 필드만 DEFAULT_SETTINGS에서 채움
+          const merged = {
             ...DEFAULT_SETTINGS,
-            ...prev, // 현재 로컬 상태 유지 (저장 전 변경사항 보호)
-            ...data, // 서버 데이터 반영
-            teams: migratedTeams // 변환된 팀 목록 적용
+            ...data,
+            teams: migratedTeams,
+            // 만약 서버에 focusPlaces가 있다면 그것을 사용, 없다면 빈 배열
+            focusPlaces: data.focusPlaces || prev.focusPlaces || []
           };
+          return merged;
         });
         
         setTempStationSettings({ 
