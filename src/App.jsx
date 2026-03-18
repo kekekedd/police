@@ -501,6 +501,9 @@ function App({ user }) {
         .then(() => {
           lastServerSettings.current = JSON.stringify(settings);
         })
+        .catch((err) => {
+          console.error("환경 설정 자동 저장 실패:", err);
+        })
         .finally(() => setIsSyncing(false));
     }, 2000); 
     return () => clearTimeout(timer);
@@ -582,8 +585,12 @@ function App({ user }) {
 
       alert('이전 근무를 기반으로 대기조가 순환 배치되었습니다.\n(기존 수동 배치와 겹치지 않게 추가되었습니다.)');
     } catch (err) {
-      console.error(err);
-      alert('순환 배치 중 오류 발생: ' + err.message);
+      console.error("순환 배치 상세 오류:", err);
+      if (err.message.includes('index')) {
+        alert('필요한 데이터 인덱스가 서버에 생성되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.\n(Firestore 색인 생성 중일 수 있습니다.)');
+      } else {
+        alert('순환 배치 중 오류 발생: ' + err.message);
+      }
     } finally {
       setIsSyncing(false);
     }

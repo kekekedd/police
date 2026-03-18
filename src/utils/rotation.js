@@ -124,13 +124,18 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
   if (rotationPool.length === 0) return { assignments: [], warnings: ["순환 대상 직원이 없습니다."] };
 
   // 2. 시작점 찾기: 이전 근무의 2조(01-04) 첫 번째 사람이 오늘의 1조(22-01) 시작점
-  const prevAssignments = prevRoster?.assignments || {};
-  // 01:00-02:00 또는 01:00-04:00 키에서 이전 2조 명단 확인
-  const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || prevAssignments["01:00-04:00_대기근무"] || [];
-  const lastStartId = prevSecondGroupIds[0];
-  
-  let startIndex = rotationPool.findIndex(e => e.id === lastStartId);
-  if (startIndex === -1) startIndex = 0; // 못 찾으면 처음부터
+  let startIndex = 0;
+  if (prevRoster && prevRoster.assignments) {
+    const prevAssignments = prevRoster.assignments;
+    // 01:00-02:00 또는 01:00-04:00 키에서 이전 2조 명단 확인
+    const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || prevAssignments["01:00-04:00_대기근무"] || [];
+    const lastStartId = prevSecondGroupIds[0];
+    
+    if (lastStartId) {
+      const foundIdx = rotationPool.findIndex(e => e.id === lastStartId);
+      if (foundIdx !== -1) startIndex = foundIdx;
+    }
+  }
 
   const finalAssignments = [];
   const warnings = [];
