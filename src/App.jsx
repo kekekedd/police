@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff, Copy, AlertTriangle } from 'lucide-react';
 import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
 import { collection, query, where, onSnapshot, doc, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -378,7 +378,7 @@ function App({ user }) {
         const data = docSnap.data();
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
         
-        // 서버 데이터 우선 병합
+        // 서버 데이터 우선 병합 (유저 데이터 보호)
         const newSettings = {
           ...DEFAULT_SETTINGS,
           ...data,
@@ -464,6 +464,19 @@ function App({ user }) {
     }
   };
 
+  const handleExplicitSaveSettings = async () => {
+    try {
+      setIsSyncing(true);
+      await saveDocument('settings', user.uid, { ...settings, userId: user.uid });
+      lastServerSettings.current = JSON.stringify(settings);
+      alert('환경 설정이 서버에 안전하게 저장되었습니다.');
+    } catch (e) {
+      alert('저장 실패: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // 설정 자동 저장
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
@@ -471,9 +484,10 @@ function App({ user }) {
     // 1. 서버 데이터와 동일하면 저장하지 않음 (무한 루프 및 덮어쓰기 방지)
     if (JSON.stringify(settings) === lastServerSettings.current) return;
 
-    // 2. 안전장치: 데이터가 급격히 줄어드는 경우(예: 5개 이상에서 0개로) 자동 저장을 차단
+    // 2. 안전장치: 데이터가 급격히 줄어드는 경우 자동 저장을 차단
     if (lastServerSettings.current) {
-      const lastCount = (JSON.parse(lastServerSettings.current).focusPlaces || []).length;
+      const lastData = JSON.parse(lastServerSettings.current);
+      const lastCount = (lastData.focusPlaces || []).length;
       const currentCount = (settings.focusPlaces || []).length;
       if (lastCount > 5 && currentCount === 0) {
         console.warn("급격한 데이터 삭제 감지 - 자동 저장을 중단합니다.");
@@ -1278,7 +1292,12 @@ function App({ user }) {
 
         {activeTab === 'settings' && (
           <div className="admin-section">
-            <h2>환경 설정</h2>
+            <div className="section-header-with-action">
+              <h2>환경 설정</h2>
+              <button className="btn-primary" onClick={handleExplicitSaveSettings}>
+                <Save size={16} /> 서버에 설정 최종 저장
+              </button>
+            </div>
             <div className="settings-grid">
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('station')}><div className="title-area"><h3>지구대 정보</h3><span className="hint-text-small">명칭 및 대장 성명</span></div>{expandedCards.station ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.station && <div className="card-content-area active"><div className="card-header-with-action">{!isEditingStation ? <button className="edit-btn-small" onClick={() => setIsEditingStation(true)}><Edit2 size={14} /> 수정</button> : <div className="action-btns"><button className="btn-save-small" onClick={() => { setSettings(prev => ({ ...prev, ...tempStationSettings })); setIsEditingStation(false); }}><Save size={14} /> 저장</button><button className="btn-cancel-small" onClick={() => setIsEditingStation(false)}><X size={14} /> 취소</button></div>}</div><div className="info-display"><div className="info-item"><label>지구대 명칭</label>{isEditingStation ? <input type="text" value={tempStationSettings.stationName} onChange={e => setTempStationSettings({ ...tempStationSettings, stationName: e.target.value })} /> : <div className="value-text">{settings.stationName}</div>}</div><div className="info-item"><label>지구대장 성명</label>{isEditingStation ? <input type="text" value={tempStationSettings.chiefName} onChange={e => setTempStationSettings({ ...tempStationSettings, chiefName: e.target.value })} /> : <div className="value-text">{settings.chiefName}</div>}</div></div></div>}</div>
               
@@ -1286,8 +1305,7 @@ function App({ user }) {
                 {editingTeamIdx === i ? <div className="edit-inline-form"><input type="text" value={editingTeamValue} onChange={e => setEditingTeamValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings(prev => ({...prev, teams:nt})); setEditingTeamIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nt=[...settings.teams]; nt[i]={...nt[i], name:editingTeamValue}; setSettings(prev => ({...prev, teams:nt})); setEditingTeamIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingTeamIdx(null)}><X size={14} /></button></div></div> : <><div className="team-info-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><button className="visibility-btn" onClick={() => {const nt=[...settings.teams]; nt[i].isVisible = !nt[i].isVisible; setSettings(prev => ({...prev, teams: nt}));}} title={t.isVisible ? "근무표에 표시됨" : "근무표에서 숨김"}>{t.isVisible ? <Eye size={16} /> : <EyeOff size={16} style={{color: '#ccc'}} />}</button><span>{t.name}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingTeamIdx(i); setEditingTeamValue(t.name);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({...prev, teams: prev.teams.filter((_,idx)=>idx!==i)})); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
-              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리 (총 {settings.focusPlaces?.length || 0}개)</h3></div>
-{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.focusPlaces, (newList) => setSettings(prev => ({...prev, focusPlaces: newList})))}>
+              <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('focus')}><div className="title-area"><h3>중점 구역 관리 (총 {settings.focusPlaces?.length || 0}개)</h3></div>{expandedCards.focus ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.focus && <div className="card-content-area active"><div className="note-form"><input type="text" value={newFocusPlace} onChange={e => setNewFocusPlace(e.target.value)} placeholder="새 장소" onKeyDown={e => e.key === 'Enter' && addFocusPlace()} /><button className="btn-primary" onClick={addFocusPlace}>추가</button></div><div className="duty-type-list">{settings.focusPlaces?.map((p, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.focusPlaces, (newList) => setSettings(prev => ({...prev, focusPlaces: newList})))}>
                 {editingFocusIdx === i ? <div className="edit-inline-form"><input type="text" value={editingFocusValue} onChange={e => setEditingFocusValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings(prev => ({...prev, focusPlaces:np})); setEditingFocusIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const np=[...settings.focusPlaces]; np[i]=editingFocusValue; setSettings(prev => ({...prev, focusPlaces:np})); setEditingFocusIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingFocusIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{p}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingFocusIdx(i); setEditingFocusValue(p);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({...prev, focusPlaces: prev.focusPlaces.filter((_,idx)=>idx!==i)})); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
 
@@ -1302,6 +1320,13 @@ function App({ user }) {
               <div className="settings-card collapsible"><div className="card-header-toggle" onClick={() => toggleCard('nightTime')}><div className="title-area"><h3>야간 시간대 관리</h3></div>{expandedCards.nightTime ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>{expandedCards.nightTime && <div className="card-content-area active"><div className="note-form"><input type="text" value={newNightTimeSlot} onChange={e => setNewNightTimeSlot(e.target.value)} placeholder="20:00-22:00" onKeyDown={e => e.key === 'Enter' && addNightTimeSlot()} /><button className="btn-primary" onClick={addNightTimeSlot}>추가</button></div><div className="duty-type-list">{(settings.nightTimeSlots || NIGHT_TIME_SLOTS).map((s, i) => <div key={i} className="duty-type-item" draggable onDragStart={() => handleDragStart(i)} onDragOver={handleDragOver} onDrop={() => handleDrop(i, settings.nightTimeSlots || NIGHT_TIME_SLOTS, (newList) => setSettings(prev => ({...prev, nightTimeSlots: newList})))}>
                 {editingNightTimeIdx === i ? <div className="edit-inline-form"><input type="text" value={editingNightTimeValue} onChange={e => setEditingNightTimeValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && (()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings(prev => ({...prev, nightTimeSlots:nts})); setEditingNightTimeIdx(null);})()} /><div className="action-btns"><button className="btn-save" onClick={()=>{const nts=[...settings.nightTimeSlots]; nts[i]=editingNightTimeValue; setSettings(prev => ({...prev, nightTimeSlots:nts})); setEditingNightTimeIdx(null);}}><Save size={14} /></button><button className="btn-cancel" onClick={()=>setEditingNightTimeIdx(null)}><X size={14} /></button></div></div> : <><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div className="drag-handle-mini" style={{ cursor: 'grab', color: '#ccc' }}><Edit2 size={12} /></div><span>{s}</span></div><div className="action-btns"><button className="edit-btn" onClick={()=>{setEditingNightTimeIdx(i); setEditingNightTimeValue(s);}}><Edit2 size={14} /></button><button className="delete-btn" onClick={() => { if(window.confirm('삭제?')) setSettings(prev => ({ ...prev, nightTimeSlots: (prev.nightTimeSlots || NIGHT_TIME_SLOTS).filter((_, idx) => idx !== i) })); }}><Trash size={14} /></button></div></>}
               </div>)}</div></div>}</div>
+            </div>
+            <div style={{ marginTop: '2rem', padding: '1rem', background: '#fff3e0', borderRadius: '8px', border: '1px solid #ffe0b2' }}>
+              <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e65100' }}><AlertTriangle size={18}/> 데이터 안전 관리</h4>
+              <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.5rem 0' }}>설정이 갑자기 사라지는 것을 방지하기 위해, 현재 설정을 텍스트로 복사해 두실 수 있습니다.</p>
+              <button className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.5rem 1rem' }} onClick={() => { navigator.clipboard.writeText(JSON.stringify(settings)); alert('설정 데이터가 클립보드에 복사되었습니다. 메모장에 붙여넣어 보관하세요.'); }}>
+                <Copy size={14}/> 현재 설정 데이터 복사하기 (백업용)
+              </button>
             </div>
           </div>
         )}
