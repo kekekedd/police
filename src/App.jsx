@@ -478,30 +478,70 @@ function App({ user }) {
     }
   };
 
-  // [긴급 복구 함수] 사용자님이 알려준 정보를 바탕으로 세팅 강제 재설정
-  const handleEmergencyRecovery = async () => {
-    if (!window.confirm('기존에 유실된 팀(관리반) 및 중점구역(응암역 등) 데이터를 복구하시겠습니까?')) return;
+  // [지능형 딥 리커버리 함수] 데이터베이스를 전수 조사하여 유실된 설정을 역추적 복구
+  const handleDeepRecovery = async () => {
+    if (!window.confirm('데이터베이스 전체를 분석하여 유실된 팀, 중점구역, 근무유형 등을 역추적 복구하시겠습니까?')) return;
     
-    const recoveredSettings = {
-      ...settings,
-      teams: [
-        ...settings.teams,
-        { name: '관리반', isVisible: true }
-      ].filter((v, i, a) => a.findIndex(t => t.name === v.name) === i), // 중복 제거
-      focusPlaces: [
-        ...(settings.focusPlaces || []),
-        '응암역', '새락골공원', '수색교회'
-      ].filter((v, i, a) => a.indexOf(v) === i) // 중복 제거
-    };
-
-    setSettings(recoveredSettings);
+    setIsSyncing(true);
     try {
-      setIsSyncing(true);
-      await saveDocument('settings', user.uid, { ...recoveredSettings, userId: user.uid });
-      lastServerSettings.current = JSON.stringify(recoveredSettings);
-      alert('데이터 복구가 완료되었습니다. 페이지를 새로고침해 주세요.');
+      // 1. 모든 직원 데이터를 통해 팀 목록 추출
+      const empSnap = await getDocs(collection(db, 'employees'));
+      const foundTeams = new Set();
+      empSnap.forEach(doc => {
+        const data = doc.data();
+        if (data.team) foundTeams.add(data.team);
+      });
+
+      // 2. 모든 근무표 데이터를 통해 중점구역 및 근무유형 추출
+      const rosterSnap = await getDocs(collection(db, 'rosters'));
+      const foundFocusPlaces = new Set();
+      const foundDutyNames = new Set();
+
+      rosterSnap.forEach(doc => {
+        const data = doc.data();
+        // 중점구역 추출
+        if (data.focusAreas) {
+          Object.values(data.focusAreas).forEach(place => {
+            if (place) foundFocusPlaces.add(place);
+          });
+        }
+        // 근무유형 추출 (assignments 키값 분석: "시간-시간_근무명" 형태)
+        if (data.assignments) {
+          Object.keys(data.assignments).forEach(key => {
+            const dutyName = key.split('_')[1];
+            if (dutyName && dutyName !== '대기근무') foundDutyNames.add(dutyName);
+          });
+        }
+      });
+
+      // 3. 복구된 데이터로 세팅 구성
+      const recoveredTeams = Array.from(foundTeams).map(name => ({ name, isVisible: true }));
+      const recoveredFocusPlaces = Array.from(foundFocusPlaces);
+      const recoveredDutyTypes = Array.from(foundDutyNames).map(name => ({ name, shift: '공통' }));
+
+      // 만약 '관리반'이 누락되었다면 추가
+      if (!foundTeams.has('관리반')) recoveredTeams.push({ name: '관리반', isVisible: true });
+
+      const finalSettings = {
+        ...settings,
+        teams: recoveredTeams.length > 0 ? recoveredTeams : settings.teams,
+        focusPlaces: recoveredFocusPlaces.length > 0 ? recoveredFocusPlaces : settings.focusPlaces,
+        dutyTypes: recoveredDutyTypes.length > 0 ? [
+          ...recoveredDutyTypes,
+          { name: '대기근무', shift: '공통' },
+          { name: '관리반', shift: '주간' }
+        ] : settings.dutyTypes
+      };
+
+      // 중복 제거 및 최종 저장
+      setSettings(finalSettings);
+      await saveDocument('settings', user.uid, { ...finalSettings, userId: user.uid });
+      lastServerSettings.current = JSON.stringify(finalSettings);
+      
+      alert(`복구 완료!\n- 팀: ${recoveredTeams.length}개\n- 중점구역: ${recoveredFocusPlaces.length}개\n- 근무유형: ${recoveredDutyNames.size}개 를 찾아내어 복구했습니다.`);
     } catch (e) {
-      alert('복구 실패: ' + e.message);
+      console.error(e);
+      alert('복구 중 오류 발생: ' + e.message);
     } finally {
       setIsSyncing(false);
     }
@@ -1389,8 +1429,8 @@ function App({ user }) {
             <div className="section-header-with-action">
               <h2>환경 설정</h2>
               <div className="action-btns">
-                <button className="btn-danger" onClick={handleEmergencyRecovery} style={{ background: '#f44336', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <RefreshCw size={16} /> 데이터 긴급 복구
+                <button className="btn-danger" onClick={handleDeepRecovery} style={{ background: '#ff9800', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={16} /> 설정 데이터 딥 리커버리
                 </button>
                 <button className="btn-primary" onClick={handleExplicitSaveSettings}>
                   <Save size={16} /> 서버에 설정 최종 저장
