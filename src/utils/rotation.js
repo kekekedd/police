@@ -7,7 +7,7 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
   if (!start1 || !end1 || !start2 || !end2) return false;
   const toMinutes = (time) => {
     const [h, m] = time.split(':').map(Number);
-    return h * 60 + m;
+    return h * 60 + (m || 0);
   };
   let s1 = toMinutes(start1);
   let e1 = toMinutes(end1);
@@ -28,7 +28,12 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) =>
 
   // 야간 근무 제외자 확인
   if (employee.isNightShiftExcluded) {
-    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const toMin = (t) => { 
+      const parts = t.split(':');
+      const h = Number(parts[0]);
+      const m = parts.length > 1 ? Number(parts[1]) : 0;
+      return h * 60 + m; 
+    };
     const s = toMin(slotStart);
     let e = toMin(slotEnd);
     if (e <= s) e += 24 * 60;
@@ -54,13 +59,13 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) =>
 
 // 대기근무 A, B, C 그룹 정의 (모든 가능한 슬롯 목록)
 const allStandbySlots = [
-  "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00"
+  "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"
 ];
 
 const standbyGroups = {
   A: ["22:00-01:00"],
   B: ["01:00-02:00", "02:00-04:00"],
-  C: ["04:00-06:00", "06:00-07:00"],
+  C: ["04:00-06:00", "06:00-07:00", "07:00-08:00"],
 };
 
 // 4일 전 근무 기록을 바탕으로 야간 대기근무를 순환시키는 새로운 핵심 함수
@@ -74,7 +79,6 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
     if (emp.fixedNightStandbySlot) {
       const [fixedStart, fixedEnd] = emp.fixedNightStandbySlot.split('-');
       
-      // 고정 시간대가 근무표 상의 어떤 슬롯과 겹치는지 확인하여 모두 배치
       let assignedCount = 0;
       allStandbySlots.forEach(slot => {
         const [slotStart, slotEnd] = slot.split('-');
@@ -113,7 +117,6 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
       if (prevAssignments[key]) {
         prevAssignments[key].forEach(id => {
           const emp = allEmployees.find(e => e.id === id);
-          // 순수한 팀원 중 고정 대기가 아닌 인원만 순환 대상으로 인정
           if (emp && emp.team === teamName && !emp.isFixedNightStandby) {
             memberIds.add(id);
           }
@@ -147,7 +150,6 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
       const employee = allEmployees.find(e => e.id === empId);
       if (!employee) return;
 
-      // [개선] 모든 슬롯이 아닌, 가능한 슬롯에만 개별적으로 배치
       let assignedAny = false;
       let lastBlockedReason = "";
 
@@ -170,7 +172,6 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
       if (assignedAny) {
         processedEmployeeIds.add(empId);
       } else {
-        // 그룹 내의 단 하나의 시간대도 배정이 불가능한 경우에만 경고
         warnings.push(`${employee.name}님은 ${groupName}그룹 순서지만, ${lastBlockedReason}으로 모든 시간대 배치 불가.`);
       }
     });
