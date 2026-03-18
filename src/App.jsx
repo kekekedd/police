@@ -321,6 +321,7 @@ function App({ user }) {
   
   // 복사/붙여넣기 관련 상태
   const [copiedStaff, setCopiedStaff] = useState(null);
+  const [copiedFocusArea, setCopiedFocusArea] = useState('');
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, slot: '', duty: '' });
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -489,6 +490,41 @@ function App({ user }) {
 
   const handleFocusChange = (slot, duty, value) => {
     setCurrentRoster(prev => ({ ...prev, focusAreas: { ...prev.focusAreas, [`${slot}_${duty}`]: value } }));
+  };
+
+  // 중점 구역 우클릭 핸들러 (즉시 복사/붙여넣기)
+  const handleFocusContextMenu = (e, slot, duty) => {
+    e.preventDefault();
+    const key = `${slot}_${duty}`;
+    const currentValue = currentRoster.focusAreas[key] || '';
+
+    if (currentValue) {
+      // 1. 장소가 지정된 칸 -> 복사
+      setCopiedFocusArea(currentValue);
+      alert(`중점 구역 '${currentValue}' 장소가 복사되었습니다.`);
+    } else {
+      // 2. 빈 칸 -> 붙여넣기
+      if (!copiedFocusArea) return;
+
+      // 중복 장소 체크 (현재 시간대(slot)의 다른 순찰차 중점 구역 확인)
+      const isAlreadyUsed = settings.dutyTypes.some(d => 
+        d.name !== duty && currentRoster.focusAreas[`${slot}_${d.name}`] === copiedFocusArea
+      );
+
+      if (isAlreadyUsed) {
+        alert(`배치 불가: '${copiedFocusArea}' 장소는 이 시간대에 이미 다른 곳에 배치되어 있습니다.`);
+        return;
+      }
+
+      // 배치 실행
+      setCurrentRoster(prev => ({
+        ...prev,
+        focusAreas: {
+          ...prev.focusAreas,
+          [key]: copiedFocusArea
+        }
+      }));
+    }
   };
 
   // 우클릭 메뉴 핸들러 (즉시 복사/붙여넣기)
@@ -889,7 +925,18 @@ function App({ user }) {
                       <td className="duty-label">{dutyObj.name}</td>
                       {currentTimeSlots.map(slot => {
                         const key = `${slot}_${dutyObj.name}`;
-                        if (dutyObj.name.includes('중점')) return <td key={slot} className="assignment-cell focus-cell" onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}><div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div></td>;
+                        if (dutyObj.name.includes('중점')) {
+                          return (
+                            <td 
+                              key={slot} 
+                              className="assignment-cell focus-cell" 
+                              onClick={() => setFocusModalState({ isOpen: true, slot, duty: dutyObj.name })}
+                              onContextMenu={(e) => handleFocusContextMenu(e, slot, dutyObj.name)}
+                            >
+                              <div className="staff-name-v">{currentRoster.focusAreas[key] || ''}</div>
+                            </td>
+                          );
+                        }
                         
                         const staffIds = currentRoster.assignments[key] || [];
                         const staff = [...employees, ...combinedVolunteers]
