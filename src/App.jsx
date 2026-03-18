@@ -1,9 +1,66 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
-import { isTimeOverlapping, checkAvailability } from './utils/rotation';
+import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
-import './App.css';
+import { collection, query, where, onSnapshot, doc, getDocs, orderBy, limit } from 'firebase/firestore';
+...
+  // 야간 대기조 자동 순환 실행
+  const handleRotateStandby = async () => {
+    if (currentRoster.shiftType !== '야간') {
+      alert('야간 근무표에서만 대기조 순환 기능을 사용할 수 있습니다.');
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      // 1. 동일 팀의 이전 가장 최근 야간 근무표 가져오기
+      const rostersRef = collection(db, 'rosters');
+      const q = query(
+        rostersRef,
+        where('userId', '==', user.uid),
+        where('metadata.teamName', '==', currentRoster.metadata.teamName),
+        where('shiftType', '==', '야간'),
+        where('date', '<', currentRoster.date),
+        orderBy('date', 'desc'),
+        limit(1)
+      );
+
+      const querySnapshot = await getDocs(q);
+      let prevRoster = null;
+      if (!querySnapshot.empty) {
+        prevRoster = querySnapshot.docs[0].data();
+      }
+
+      // 2. 순환 로직 계산
+      const { assignments, warnings } = rotateStandbyGroups(prevRoster, employees, todaysNotes);
+
+      if (warnings.length > 0 && !window.confirm(`일부 주의사항이 있습니다:\n${warnings.join('\n')}\n\n계속하시겠습니까?`)) {
+        return;
+      }
+
+      // 3. 결과 적용
+      setCurrentRoster(prev => {
+        const newAssignments = { ...prev.assignments };
+        assignments.forEach(asgn => {
+          const key = `${asgn.slot}_대기근무`;
+          // 기존 명단 유지하면서 추가 (중복 방지)
+          if (!(newAssignments[key] || []).includes(asgn.employeeId)) {
+            newAssignments[key] = [...(newAssignments[key] || []), asgn.employeeId];
+          }
+        });
+        return { ...prev, assignments: newAssignments };
+      });
+
+      alert('이전 근무를 기반으로 대기조가 순환 배치되었습니다.\n(기존 수동 배치와 겹치지 않게 추가되었습니다.)');
+    } catch (err) {
+      console.error(err);
+      alert('순환 배치 중 오류 발생: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // 근무표 초기화 함수
 
 const DAY_TIME_SLOTS = [
   "07:30-08:00", "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00",
@@ -854,8 +911,14 @@ function App({ user }) {
                 </div>
               </div>
               <div className="header-actions">
-                <button className="btn-primary" onClick={handleSaveRoster}><Save size={16} /> 저장하기</button>
+                <button className="btn-primary" onClick={() => handleSaveRoster()}><Save size={16} /> 저장하기</button>
+                {currentRoster.shiftType === '야간' && (
+                  <button className="btn-secondary" onClick={handleRotateStandby} style={{ background: '#673ab7' }}>
+                    <RefreshCw size={16} /> 대기조 순환
+                  </button>
+                )}
                 <button className="btn-danger" onClick={handleResetRoster} style={{ background: '#ff4444', color: 'white', borderRadius: '8px', border: 'none', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><Trash size={16} /> 일지 초기화</button>
+
                 <button className="btn-secondary" onClick={() => setVolunteerAddModalOpen(true)}><Plus size={16} /> 자원근무</button>
                 <button className="btn-outline" onClick={() => window.print()}><Printer size={16} /> 인쇄</button>
               </div>

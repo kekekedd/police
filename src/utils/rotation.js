@@ -97,71 +97,80 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
 // 야간 대기조 순환 로직 (3개조: 22-01, 01-04, 04-07)
 export const rotateStandbyGroups = (prevRoster, employees, specialNotes) => {
   const standbyBlocks = [
-    { label: "22:00-01:00", slots: ["22:00-01:00"] },
-    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"] },
-    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"] }
+    { label: "22:00-01:00", slots: ["22:00-01:00"], key: "22:00-01:00_대기근무" },
+    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"], key: "01:00-04:00_대기근무" }, // 대표키
+    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"], key: "04:00-07:00_대기근무" }
   ];
 
-  // 순환 대상자 풀 (고정 대기 제외)
-  const rotationPool = employees.filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby);
-  
-  // 이전 야간의 대기조 구성 파악
-  const prevAssignments = prevRoster?.assignments || {};
-  const prevStandbyOrder = [];
-  
-  standbyBlocks.forEach(block => {
-    // 각 블록의 첫 번째 슬롯을 기준으로 이전 근무자 파악
-    const ids = prevAssignments[`${block.slots[0]}_대기근무`] || [];
-    ids.forEach(id => {
-      if (!prevStandbyOrder.includes(id)) prevStandbyOrder.push(id);
-    });
-  });
+  const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
+  const getRankWeight = (rank) => {
+    const index = RANKS.indexOf(rank);
+    return index === -1 ? 99 : index;
+  };
 
-  // 순번 계산을 위한 기준점 (이전 대기조의 마지막 사람 다음부터)
-  const lastId = prevStandbyOrder[prevStandbyOrder.length - 1];
-  let startIndex = rotationPool.findIndex(e => e.id === lastId);
-  if (startIndex === -1) startIndex = 0;
-  else startIndex = (startIndex + 1) % rotationPool.length;
+  // 1. 순환 대상자 풀 (고정 대기 제외, 계급/성명순 고정 정렬)
+  const rotationPool = employees
+    .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
+    .sort((a, b) => {
+      const weightA = getRankWeight(a.rank);
+      const weightB = getRankWeight(b.rank);
+      if (weightA !== weightB) return weightA - weightB;
+      return a.name.localeCompare(b.name);
+    });
+
+  if (rotationPool.length === 0) return { assignments: [], warnings: ["순환 대상 직원이 없습니다."] };
+
+  // 2. 시작점 찾기: 이전 근무의 2조(01-04) 첫 번째 사람이 오늘의 1조(22-01) 시작점
+  const prevAssignments = prevRoster?.assignments || {};
+  // 01:00-02:00 또는 01:00-04:00 키에서 이전 2조 명단 확인
+  const prevSecondGroupIds = prevAssignments["01:00-02:00_대기근무"] || prevAssignments["01:00-04:00_대기근무"] || [];
+  const lastStartId = prevSecondGroupIds[0];
+  
+  let startIndex = rotationPool.findIndex(e => e.id === lastStartId);
+  if (startIndex === -1) startIndex = 0; // 못 찾으면 처음부터
 
   const finalAssignments = [];
   const warnings = [];
   const usedIds = new Set();
 
-  // 블록당 인원수 배분 (전체 인원 / 3개조)
+  // 조당 목표 인원 계산
   const countPerGroup = Math.floor(rotationPool.length / 3);
   const remainder = rotationPool.length % 3;
 
+  let currentPoolIndex = startIndex;
+
+  // 3. 각 블록(조)별 배치 실행
   standbyBlocks.forEach((block, groupIdx) => {
-    let targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
+    const targetCount = countPerGroup + (groupIdx < remainder ? 1 : 0);
     let assignedInGroup = 0;
+    let checkedCount = 0; // 무한 루프 방지
 
-    for (let i = 0; i < rotationPool.length && assignedInGroup < targetCount; i++) {
-      const candidateIndex = (startIndex + i) % rotationPool.length;
-      const candidate = rotationPool[candidateIndex];
-
-      if (usedIds.has(candidate.id)) continue;
-
-      // 해당 블록의 모든 슬롯에 대해 가용성 체크
-      const isAvailable = block.slots.every(slot => {
-        const [s, e] = slot.split('-');
-        return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
-      });
-
-      if (isAvailable) {
-        block.slots.forEach(slot => {
-          finalAssignments.push({ slot, employeeId: candidate.id });
+    while (assignedInGroup < targetCount && checkedCount < rotationPool.length) {
+      const candidate = rotationPool[currentPoolIndex];
+      
+      if (!usedIds.has(candidate.id)) {
+        // 모든 슬롯에 대해 가용성 체크
+        const isAvailable = block.slots.every(slot => {
+          const [s, e] = slot.split('-');
+          // 대기근무 row 체크
+          return checkAvailability(candidate, s, e, specialNotes, '대기근무', slot).available;
         });
-        usedIds.add(candidate.id);
-        assignedInGroup++;
-        // 다음 그룹을 위해 시작 인덱스 업데이트
-        if (assignedInGroup === targetCount) {
-          startIndex = (candidateIndex + 1) % rotationPool.length;
+
+        if (isAvailable) {
+          block.slots.forEach(slot => {
+            finalAssignments.push({ slot, employeeId: candidate.id });
+          });
+          usedIds.add(candidate.id);
+          assignedInGroup++;
         }
       }
+      
+      currentPoolIndex = (currentPoolIndex + 1) % rotationPool.length;
+      checkedCount++;
     }
 
     if (assignedInGroup < targetCount) {
-      warnings.push(`${block.label} 대기조 인원이 부족합니다. (${assignedInGroup}/${targetCount})`);
+      warnings.push(`${block.label} 인원 부족 (${assignedInGroup}/${targetCount})`);
     }
   });
 
