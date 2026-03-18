@@ -23,8 +23,13 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 };
 
 // 특정 직원의 배치 가능 여부 계산
-export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) => {
+export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, dutyName) => {
   if (!employee) return { available: false, reason: '정보없음' };
+
+  // 대기근무 전역 제한 (07:00 ~ 08:00 배정 금지)
+  if (dutyName === '대기근무' && slotStart === '07:00' && slotEnd === '08:00') {
+    return { available: false, reason: '배정금지' };
+  }
 
   // 야간 근무 제외자 확인
   if (employee.isNightShiftExcluded) {
@@ -58,14 +63,15 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) =>
 };
 
 // 대기근무 A, B, C 그룹 정의 (모든 가능한 슬롯 목록)
+// 07:00-08:00는 전역적으로 대기근무 배제 (사용자 요청)
 const allStandbySlots = [
-  "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"
+  "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00"
 ];
 
 const standbyGroups = {
   A: ["22:00-01:00"],
   B: ["01:00-02:00", "02:00-04:00"],
-  C: ["04:00-06:00", "06:00-07:00", "07:00-08:00"],
+  C: ["04:00-06:00", "06:00-07:00"],
 };
 
 // 4일 전 근무 기록을 바탕으로 야간 대기근무를 순환시키는 새로운 핵심 함수
@@ -83,7 +89,7 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
       allStandbySlots.forEach(slot => {
         const [slotStart, slotEnd] = slot.split('-');
         if (isTimeOverlapping(fixedStart, fixedEnd, slotStart, slotEnd)) {
-          const availability = checkAvailability(emp, slotStart, slotEnd, specialNotesForToday);
+          const availability = checkAvailability(emp, slotStart, slotEnd, specialNotesForToday, '대기근무');
           if (availability.available) {
             const slotKey = `${slot}_대기근무`;
             if (!newAssignments[slotKey]) newAssignments[slotKey] = [];
@@ -155,7 +161,7 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
 
       slotsToFill.forEach(slot => {
         const [start, end] = slot.split('-');
-        const { available, reason } = checkAvailability(employee, start, end, specialNotesForToday);
+        const { available, reason } = checkAvailability(employee, start, end, specialNotesForToday, '대기근무');
         
         if (available) {
           const key = `${slot}_대기근무`;
