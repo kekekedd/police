@@ -72,11 +72,11 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
 
 // 대기근무 A, B, C 그룹 정의 (모든 가능한 슬롯 목록)
 // 07:00-08:00는 전역적으로 대기근무 배제 (사용자 요청)
-const allStandbySlots = [
+export const allStandbySlots = [
   "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00"
 ];
 
-const standbyGroups = {
+export const standbyGroups = {
   A: ["22:00-01:00"],
   B: ["01:00-02:00", "02:00-04:00"],
   C: ["04:00-06:00", "06:00-07:00"],
