@@ -478,101 +478,49 @@ function App({ user }) {
     }
   };
 
-  // [지능형 딥 리커버리 함수] 데이터베이스를 전수 조사하여 유실된 설정을 역추적 복구
-  const handleDeepRecovery = async () => {
-    if (!window.confirm('데이터베이스 전체를 분석하여 유실된 팀, 중점구역, 근무유형 등을 역추적 복구하시겠습니까?')) return;
+  // [JSON 데이터 직접 복구 함수] 사용자님이 제공한 JSON 기반으로 최종 복구
+  const handleJsonRestore = async () => {
+    if (!window.confirm('제공해주신 설정 데이터로 서버를 복구하시겠습니까?')) return;
     
     setIsSyncing(true);
     try {
-      console.log("복구 시작: userId =", user.uid);
-      
-      // 1. 해당 사용자의 모든 직원 데이터를 통해 팀 목록 추출
-      const empQuery = query(collection(db, 'employees'), where('userId', '==', user.uid));
-      const empSnap = await getDocs(empQuery);
-      const foundTeams = new Set();
-      empSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.team) foundTeams.add(data.team);
-      });
-      console.log("찾은 팀들:", Array.from(foundTeams));
-
-      // 2. 해당 사용자의 모든 근무표 데이터를 통해 중점구역 및 근무유형 추출
-      const rosterQuery = query(collection(db, 'rosters'), where('userId', '==', user.uid));
-      const rosterSnap = await getDocs(rosterQuery);
-      const foundFocusPlaces = new Set();
-      const foundDutyNames = new Set();
-
-      rosterSnap.forEach(doc => {
-        const data = doc.data();
-        // 중점구역 추출
-        if (data.focusAreas) {
-          Object.values(data.focusAreas).forEach(place => {
-            if (place) foundFocusPlaces.add(place);
-          });
-        }
-        // 근무유형 추출 (assignments 키값 분석: "시간-시간_근무명" 형태)
-        if (data.assignments) {
-          Object.keys(data.assignments).forEach(key => {
-            const parts = key.split('_');
-            if (parts.length > 1) {
-              const dutyName = parts[1];
-              if (dutyName && dutyName !== '대기근무' && dutyName !== '관리반') foundDutyNames.add(dutyName);
-            }
-          });
-        }
-      });
-      console.log("찾은 장소들:", Array.from(foundFocusPlaces));
-      console.log("찾은 근무들:", Array.from(foundDutyNames));
-
-      // 3. 복구된 데이터로 세팅 구성
-      const recoveredTeams = Array.from(foundTeams).map(name => ({ name, isVisible: true }));
-      const recoveredFocusPlaces = Array.from(foundFocusPlaces);
-      
-      // 기본 근무 유형들 정의
-      const baseDuties = [
-        { name: "상황근무", shift: "공통" },
-        { name: "서부 순21호", shift: "공통" },
-        { name: "순21호 중점", shift: "공통" },
-        { name: "서부 순23호", shift: "공통" },
-        { name: "순23호 중점", shift: "공통" },
-        { name: "서부 순24호", shift: "공통" },
-        { name: "순24호 중점", shift: "공통" },
-        { name: "서부 순25호", shift: "공통" },
-        { name: "순25호 중점", shift: "공통" },
-        { name: "도보", shift: "공통" },
-        { name: "대기근무", shift: "공통" },
-        { name: "관리반", shift: "주간" }
-      ];
-
-      // 찾은 근무 명칭 중 기본에 없는 것들을 추가
-      const finalDutyTypes = [...baseDuties];
-      foundDutyNames.forEach(name => {
-        if (!finalDutyTypes.some(d => d.name === name)) {
-          finalDutyTypes.push({ name, shift: '공통' });
-        }
-      });
-
-      // 만약 '관리반' 팀이 누락되었다면 추가
-      if (!foundTeams.has('관리반')) {
-        recoveredTeams.push({ name: '관리반', isVisible: true });
-      }
-
-      const finalSettings = {
-        ...settings,
-        teams: recoveredTeams.length > 0 ? recoveredTeams : settings.teams,
-        focusPlaces: recoveredFocusPlaces.length > 0 ? recoveredFocusPlaces : settings.focusPlaces,
-        dutyTypes: finalDutyTypes
+      const providedData = {
+        "stationName": "○○ 지구대",
+        "chiefName": "",
+        "dutyTypes": [
+          { "shift": "공통", "name": "상황근무" },
+          { "name": "서부 순21호", "shift": "공통" },
+          { "shift": "공통", "name": "순21호 중점" },
+          { "name": "서부 순23호", "shift": "공통" },
+          { "shift": "공통", "name": "순23호 중점" },
+          { "shift": "공통", "name": "서부 순24호" },
+          { "shift": "공통", "name": "순24호 중점" },
+          { "shift": "공통", "name": "서부 순25호" },
+          { "shift": "공통", "name": "순25호 중점" },
+          { "shift": "야간", "name": "도보" },
+          { "name": "대기근무", "shift": "야간" },
+          { "shift": "주간", "name": "관리반" },
+          { "name": "교대근무", "shift": "공통" }
+        ],
+        "teams": [
+          { "name": "2팀", "isVisible": true },
+          { "name": "1팀", "isVisible": true },
+          { "isVisible": true, "name": "3팀" },
+          { "name": "4팀", "isVisible": true },
+          { "name": "관리반", "isVisible": false }
+        ],
+        "focusPlaces": ["응암역", "새락골공원", "수색교회"],
+        "dayTimeSlots": ["07:30-08:00", "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00", "18:00-20:00"],
+        "nightTimeSlots": ["19:30-20:00", "20:00-22:00", "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00", "07:00-08:00"]
       };
 
-      // 최종 저장
-      setSettings(finalSettings);
-      await saveDocument('settings', user.uid, { ...finalSettings, userId: user.uid });
-      lastServerSettings.current = JSON.stringify(finalSettings);
+      setSettings(prev => ({ ...prev, ...providedData }));
+      await saveDocument('settings', user.uid, { ...providedData, userId: user.uid });
+      lastServerSettings.current = JSON.stringify({ ...providedData, userId: user.uid });
       
-      alert(`복구 완료!\n- 팀: ${recoveredTeams.length}개\n- 중점구역: ${recoveredFocusPlaces.length}개\n- 근무유형: ${foundDutyNames.size}개를 복원했습니다.`);
+      alert('제공된 데이터로 복구가 완료되었습니다. 페이지를 새로고침 하세요.');
     } catch (e) {
-      console.error("복구 에러 상세:", e);
-      alert(`복구 중 오류 발생: ${e.code || e.message}\n상세: ${e.message}`);
+      alert('복구 실패: ' + e.message);
     } finally {
       setIsSyncing(false);
     }
@@ -1460,8 +1408,8 @@ function App({ user }) {
             <div className="section-header-with-action">
               <h2>환경 설정</h2>
               <div className="action-btns">
-                <button className="btn-danger" onClick={handleDeepRecovery} style={{ background: '#ff9800', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <RefreshCw size={16} /> 설정 데이터 딥 리커버리
+                <button className="btn-danger" onClick={handleJsonRestore} style={{ background: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={16} /> 제공된 JSON 데이터로 복구
                 </button>
                 <button className="btn-primary" onClick={handleExplicitSaveSettings}>
                   <Save size={16} /> 서버에 설정 최종 저장
