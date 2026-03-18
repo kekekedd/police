@@ -87,8 +87,14 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
   const newAssignments = {};
   const warnings = [];
   const processedEmployeeIds = new Set();
+  const todayRotationGroups = {}; // { employeeId: 'A' | 'B' | 'C' }
 
-  // 1. 고정 대기자 우선 배치 (유연한 시간대 매칭)
+  // 순환 대상자 필터링 (해당 팀 + 순환 대상 체크 + 고정 대기자 제외)
+  const eligibleEmployees = allEmployees.filter(e => 
+    e.team === teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby
+  );
+
+  // 1. 고정 대기자 우선 배치 (순환 로직과 별개)
   allEmployees.filter(e => e.team === teamName && e.isFixedNightStandby).forEach(emp => {
     if (emp.fixedNightStandbySlot) {
       const [fixedStart, fixedEnd] = emp.fixedNightStandbySlot.split('-');
@@ -115,81 +121,79 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
     }
   });
 
-  // 4일 전 근무표가 없으면 순환 불가
-  if (!prev4DaysRoster || !prev4DaysRoster.assignments) {
-    warnings.push("4일 전 야간 근무기록이 없어 순환할 수 없습니다.");
-    return { assignments: newAssignments, warnings };
-  }
-  
-  const prevAssignments = prev4DaysRoster.assignments;
-
-  // 2. 4일 전 A, B, C 그룹 멤버 파악 (고정 대기자 제외)
-  const getPrevGroupMembers = (groupSlots) => {
-    const memberIds = new Set();
-    groupSlots.forEach(slot => {
-      const key = `${slot}_대기근무`;
-      if (prevAssignments[key]) {
-        prevAssignments[key].forEach(id => {
-          const emp = allEmployees.find(e => e.id === id);
-          if (emp && emp.team === teamName && !emp.isFixedNightStandby) {
-            memberIds.add(id);
-          }
-        });
-      }
+  // 4일 전 근무표가 없거나 그룹 정보가 전혀 없는 경우
+  if (!prev4DaysRoster || (!prev4DaysRoster.assignments && !prev4DaysRoster.standbyRotationGroups)) {
+    warnings.push("4일 전 야간 근무기록이 없어 초기 그룹으로 배정합니다.");
+    eligibleEmployees.forEach((emp, idx) => {
+      const group = ['A', 'B', 'C'][idx % 3];
+      todayRotationGroups[emp.id] = group;
     });
-    return Array.from(memberIds);
-  };
-  
-  const prevGroup = {
-    A: getPrevGroupMembers(standbyGroups.A),
-    B: getPrevGroupMembers(standbyGroups.B),
-    C: getPrevGroupMembers(standbyGroups.C),
-  };
+  } else {
+    const prevGroups = prev4DaysRoster.standbyRotationGroups || {};
+    const prevAssignments = prev4DaysRoster.assignments || {};
 
-  // 3. 오늘 A, B, C 그룹 결정 (C -> A, A -> B, B -> C)
-  const todayGroupMap = {
-    A: prevGroup.C,
-    B: prevGroup.A,
-    C: prevGroup.B,
-  };
+    // 2. 모든 대상자의 '이전 그룹' 파악
+    eligibleEmployees.forEach(emp => {
+      let prevG = prevGroups[emp.id];
 
-  // 4. 결정된 그룹에 따라 오늘 근무표에 배치
-  for (const groupName in todayGroupMap) {
-    const employeeIdsToAssign = todayGroupMap[groupName];
+      // 만약 이전 그룹 정보가 없다면(신규 등), 이전 배정표에서 직접 찾아보기
+      if (!prevG) {
+        for (const gName in standbyGroups) {
+          const isMatch = standbyGroups[gName].some(slot => {
+            const key = `${slot}_대기근무`;
+            return prevAssignments[key] && prevAssignments[key].includes(emp.id);
+          });
+          if (isMatch) {
+            prevG = gName;
+            break;
+          }
+        }
+      }
+
+      // 3. 오늘 그룹 결정 (순환: C->A, A->B, B->C)
+      let todayG = 'A'; // 기본값
+      if (prevG === 'A') todayG = 'B';
+      else if (prevG === 'B') todayG = 'C';
+      else if (prevG === 'C') todayG = 'A';
+      else {
+        // 이전에 아예 기록이 없던 경우, 인원수가 적은 그룹에 우선 배치
+        const groupCounts = { A: 0, B: 0, C: 0 };
+        Object.values(todayRotationGroups).forEach(g => groupCounts[g]++);
+        todayG = Object.keys(groupCounts).reduce((a, b) => groupCounts[a] <= groupCounts[b] ? a : b);
+      }
+
+      todayRotationGroups[emp.id] = todayG;
+    });
+  }
+
+  // 4. 결정된 오늘 그룹에 따라 실제 배정 시도
+  eligibleEmployees.forEach(employee => {
+    const groupName = todayRotationGroups[employee.id];
     const slotsToFill = standbyGroups[groupName];
 
-    employeeIdsToAssign.forEach(empId => {
-      if (processedEmployeeIds.has(empId)) return;
+    let assignedAny = false;
+    let lastBlockedReason = "";
 
-      const employee = allEmployees.find(e => e.id === empId);
-      if (!employee) return;
-
-      let assignedAny = false;
-      let lastBlockedReason = "";
-
-      slotsToFill.forEach(slot => {
-        const [start, end] = slot.split('-');
-        const { available, reason } = checkAvailability(employee, start, end, specialNotesForToday, '대기근무');
-        
-        if (available) {
-          const key = `${slot}_대기근무`;
-          if (!newAssignments[key]) newAssignments[key] = [];
-          if (!newAssignments[key].includes(empId)) {
-            newAssignments[key].push(empId);
-          }
-          assignedAny = true;
-        } else {
-          lastBlockedReason = reason;
+    slotsToFill.forEach(slot => {
+      const [start, end] = slot.split('-');
+      const { available, reason } = checkAvailability(employee, start, end, specialNotesForToday, '대기근무');
+      
+      if (available) {
+        const key = `${slot}_대기근무`;
+        if (!newAssignments[key]) newAssignments[key] = [];
+        if (!newAssignments[key].includes(employee.id)) {
+          newAssignments[key].push(employee.id);
         }
-      });
-
-      if (assignedAny) {
-        processedEmployeeIds.add(empId);
+        assignedAny = true;
       } else {
-        warnings.push(`${employee.name}님은 ${groupName}그룹 순서지만, ${lastBlockedReason}으로 모든 시간대 배치 불가.`);
+        lastBlockedReason = reason;
       }
     });
-  }
+
+    if (!assignedAny) {
+      warnings.push(`${employee.name}님은 ${groupName}그룹 순번이지만, ${lastBlockedReason} 사유로 모든 시간대 배치가 제외되었습니다. (다음 순환에는 영향을 주지 않습니다)`);
+    }
+  });
   
-  return { assignments: newAssignments, warnings };
+  return { assignments: newAssignments, warnings, standbyRotationGroups: todayRotationGroups };
 };

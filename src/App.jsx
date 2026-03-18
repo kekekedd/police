@@ -572,7 +572,7 @@ function App({ user }) {
       }
 
       const prevRosterData = prevRosterDoc.data();
-      const { assignments: newStandbyAssignments, warnings } = rotateNightStandby(prevRosterData, employees, todaysNotes, currentRoster.metadata.teamName);
+      const { assignments: newStandbyAssignments, warnings, standbyRotationGroups } = rotateNightStandby(prevRosterData, employees, todaysNotes, currentRoster.metadata.teamName);
 
       setCurrentRoster(prev => {
         const updatedAssignments = { ...prev.assignments };
@@ -582,7 +582,8 @@ function App({ user }) {
         });
         return {
           ...prev,
-          assignments: { ...updatedAssignments, ...newStandbyAssignments }
+          assignments: { ...updatedAssignments, ...newStandbyAssignments },
+          standbyRotationGroups: standbyRotationGroups // 순환 그룹 정보 저장
         };
       });
 
