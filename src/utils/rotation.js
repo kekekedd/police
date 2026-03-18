@@ -60,9 +60,9 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
 // 야간 대기조 순환 로직
 export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamName) => {
   const standbyBlocks = [
-    { label: "22:00-01:00", slots: ["22:00-01:00"] },
-    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"] },
-    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"] }
+    { label: "22:00-01:00", slots: ["22:00-01:00"] }, // A조
+    { label: "01:00-04:00", slots: ["01:00-02:00", "02:00-04:00"] }, // B조
+    { label: "04:00-07:00", slots: ["04:00-06:00", "06:00-07:00"] }  // C조
   ];
 
   const RANKS = ["경정", "경감", "경위", "경사", "경장", "순경"];
@@ -74,7 +74,7 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
 
   const teamEmps = employees.filter(e => e.team === teamName);
 
-  // 1. 고정 대기자 우선 배치
+  // 1. 고정 대기자 우선 배치 (순환 풀에서 제외)
   teamEmps.forEach(emp => {
     if (emp.isFixedNightStandby && emp.fixedNightStandbySlot) {
       const [fs, fe] = emp.fixedNightStandbySlot.split('-');
@@ -82,15 +82,17 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
         standbyBlocks.forEach(b => {
           const [bs, be] = b.label.split('-');
           if (isTimeOverlapping(fs, fe, bs, be)) {
-            b.slots.forEach(s => finalAssignments.push({ slot: s, employeeId: emp.id }));
-            usedIds.add(emp.id);
+            b.slots.forEach(s => {
+              finalAssignments.push({ slot: s, employeeId: emp.id });
+              usedIds.add(emp.id);
+            });
           }
         });
       }
     }
   });
 
-  // 2. 순환 대상자 풀 (계급/성명순 고정 정렬)
+  // 2. 순환 대상자 풀 구성 (고정대기 제외, 계급/성명순 고정 줄 세우기)
   const rotationPool = teamEmps
     .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
     .sort((a, b) => {
@@ -102,54 +104,80 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
 
   if (rotationPool.length === 0) return { assignments: finalAssignments, warnings: [] };
 
-  // 3. 시작점 찾기 (이전 3조 시작자 -> 오늘 1조 시작자)
+  // 3. 강력한 시작점(Anchor) 찾기 로직
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
     const prev = prevRoster.assignments;
-    // 이전 3조(04-07)의 대표 슬롯에서 첫 번째 사람 확인
-    const prevG3Ids = prev["04:00-06:00_대기근무"] || [];
-    const anchorId = prevG3Ids[0]; 
-    const foundIdx = rotationPool.findIndex(e => e.id === anchorId);
     
-    if (foundIdx !== -1) {
-      startIndex = foundIdx; // 이전 3조였던 사람이 오늘의 1조 시작점이 됨
-    } else {
-      // 만약 이전 3조 인원이 사라졌다면, 이전 2조의 마지막 사람 다음 순번으로 흐름 유지
-      const prevG2Ids = prev["01:00-02:00_대기근무"] || [];
-      const lastG2Id = prevG2Ids[prevG2Ids.length - 1];
-      const lastG2Idx = rotationPool.findIndex(e => e.id === lastG2Id);
-      if (lastG2Idx !== -1) startIndex = (lastG2Idx + 1) % rotationPool.length;
+    // (1) 이전 C조(04-07) 멤버들 전체 리스트업
+    const prevGroupCIds = [
+      ...(prev["04:00-06:00_대기근무"] || []),
+      ...(prev["06:00-07:00_대기근무"] || [])
+    ];
+
+    // (2) 이전 C조 멤버 중 오늘 순환 풀에 있는 첫 번째 사람을 찾음
+    let foundAnchor = false;
+    for (const id of prevGroupCIds) {
+      const idxInPool = rotationPool.findIndex(e => e.id === id);
+      if (idxInPool !== -1) {
+        startIndex = idxInPool; // 이 사람이 오늘 A조의 시작점이 됨
+        foundAnchor = true;
+        break;
+      }
+    }
+
+    // (3) 만약 이전 C조 멤버가 아무도 없다면 (전원 휴가 등), 이전 B조의 마지막 사람 다음 순번을 찾음
+    if (!foundAnchor) {
+      const prevGroupBIds = [
+        ...(prev["01:00-02:00_대기근무"] || []),
+        ...(prev["02:00-04:00_대기근무"] || [])
+      ];
+      for (let i = prevGroupBIds.length - 1; i >= 0; i--) {
+        const idxInPool = rotationPool.findIndex(e => e.id === prevGroupBIds[i]);
+        if (idxInPool !== -1) {
+          startIndex = (idxInPool + 1) % rotationPool.length;
+          foundAnchor = true;
+          break;
+        }
+      }
     }
   }
 
-  // 4. 순차 배치 (Wheel 로직)
-  const totalAvailable = rotationPool.length;
-  const countPerGroup = Math.floor(totalAvailable / 3);
-  const remainder = totalAvailable % 3;
+  // 4. 순환 휠(Wheel)을 돌리며 빈틈없이 배치
+  const totalPoolSize = rotationPool.length;
+  const targetPerGroup = Math.floor(totalPoolSize / 3);
+  const remainder = totalPoolSize % 3;
   let currentWheelIdx = startIndex;
 
   standbyBlocks.forEach((block, groupIdx) => {
-    const alreadyFixedIds = new Set(finalAssignments.filter(a => block.slots.includes(a.slot)).map(a => a.employeeId));
-    const groupTarget = countPerGroup + (groupIdx < remainder ? 1 : 0);
+    // 이미 고정 대기자로 채워진 인원 수 확인
+    const assignedFixedCount = new Set(finalAssignments.filter(a => block.slots.includes(a.slot)).map(a => a.employeeId)).size;
+    const groupTarget = targetPerGroup + (groupIdx < remainder ? 1 : 0);
     
-    let assignedInGroup = alreadyFixedIds.size;
-    let checkedCount = 0;
+    let assignedCount = assignedFixedCount;
+    let checkedInPool = 0;
 
-    while (assignedInGroup < groupTarget && checkedCount < totalAvailable) {
+    // 조별 목표 인원이 찰 때까지 휠을 돌림
+    while (assignedCount < groupTarget && checkedInPool < totalPoolSize) {
       const candidate = rotationPool[currentWheelIdx];
+      
       if (!usedIds.has(candidate.id)) {
+        // 이 직원이 이 조의 모든 시간대에 근무 가능한지 체크
         const isAvail = block.slots.every(s => {
           const [st, en] = s.split('-');
           return checkAvailability(candidate, st, en, specialNotes, '대기근무', s).available;
         });
+
         if (isAvail) {
           block.slots.forEach(s => finalAssignments.push({ slot: s, employeeId: candidate.id }));
           usedIds.add(candidate.id);
-          assignedInGroup++;
+          assignedCount++;
         }
       }
-      currentWheelIdx = (currentWheelIdx + 1) % totalAvailable;
-      checkedCount++;
+      
+      // 다음 사람으로 휠 이동
+      currentWheelIdx = (currentWheelIdx + 1) % totalPoolSize;
+      checkedInPool++;
     }
   });
 
@@ -161,16 +189,16 @@ export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNo
   const assignments = {};
   const teamName = currentRoster.metadata.teamName;
 
-  // 1. 대기 근무만 순환 배치 (다른 근무는 사용자 요청 전까지 자동 배치 안 함)
+  // 1. 대기 근무만 순환 배치 (3조 -> 1조 흐름 고정)
   if (currentRoster.shiftType === '야간') {
     const { assignments: standby } = rotateStandbyGroups(prevRoster, employees, specialNotes, teamName);
     standby.forEach(as => {
       const k = `${as.slot}_대기근무`;
       if (!assignments[k]) assignments[k] = [];
-      assignments[k].push(as.employeeId);
+      if (!assignments[k].includes(as.employeeId)) assignments[k].push(as.employeeId);
     });
   }
 
-  // 순찰, 상황근무 등은 빈 칸으로 유지하여 도배 현상 제거
+  // 순찰, 상황근무 등은 빈 칸으로 유지
   return { assignments, focusAreas: {}, warnings: [] };
 };
