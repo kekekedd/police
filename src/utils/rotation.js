@@ -82,6 +82,9 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, du
   const notes = specialNotes.filter(n => n.employeeId === employee.id);
   
   for (const note of notes) {
+    // 지원근무는 결격 사유가 아니라 오히려 근무를 하러 온 것이므로 제외 체크에서 건너뜀
+    if (note.type === '지원근무') continue;
+
     // 병가, 휴가 등 '사고자' 개념의 유형은 해당 근무 전체에서 제외 (전부 배치 불가)
     if (['휴가', '병가', '기타'].includes(note.type) || note.isAllDay) {
       return { available: false, reason: note.type };
