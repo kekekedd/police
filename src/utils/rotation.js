@@ -52,7 +52,11 @@ export const checkAvailability = (employee, slotStart, slotEnd, specialNotes) =>
   return { available: true };
 };
 
-// 대기근무 A, B, C 그룹 정의
+// 대기근무 A, B, C 그룹 정의 (모든 가능한 슬롯 목록)
+const allStandbySlots = [
+  "22:00-01:00", "01:00-02:00", "02:00-04:00", "04:00-06:00", "06:00-07:00"
+];
+
 const standbyGroups = {
   A: ["22:00-01:00"],
   B: ["01:00-02:00", "02:00-04:00"],
@@ -65,18 +69,30 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
   const warnings = [];
   const processedEmployeeIds = new Set();
 
-  // 1. 고정 대기자 우선 배치
+  // 1. 고정 대기자 우선 배치 (유연한 시간대 매칭)
   allEmployees.filter(e => e.team === teamName && e.isFixedNightStandby).forEach(emp => {
     if (emp.fixedNightStandbySlot) {
-      const [slotStart, slotEnd] = emp.fixedNightStandbySlot.split('-');
-      const availability = checkAvailability(emp, slotStart, slotEnd, specialNotesForToday);
-      if (availability.available) {
-        const slotKey = `${emp.fixedNightStandbySlot}_대기근무`;
-        if (!newAssignments[slotKey]) newAssignments[slotKey] = [];
-        newAssignments[slotKey].push(emp.id);
+      const [fixedStart, fixedEnd] = emp.fixedNightStandbySlot.split('-');
+      
+      // 고정 시간대가 근무표 상의 어떤 슬롯과 겹치는지 확인하여 모두 배치
+      let assignedCount = 0;
+      allStandbySlots.forEach(slot => {
+        const [slotStart, slotEnd] = slot.split('-');
+        if (isTimeOverlapping(fixedStart, fixedEnd, slotStart, slotEnd)) {
+          const availability = checkAvailability(emp, slotStart, slotEnd, specialNotesForToday);
+          if (availability.available) {
+            const slotKey = `${slot}_대기근무`;
+            if (!newAssignments[slotKey]) newAssignments[slotKey] = [];
+            newAssignments[slotKey].push(emp.id);
+            assignedCount++;
+          }
+        }
+      });
+
+      if (assignedCount > 0) {
         processedEmployeeIds.add(emp.id);
       } else {
-        warnings.push(`${emp.name}님은 고정대기(${emp.fixedNightStandbySlot})이지만, ${availability.reason}으로 배치 불가.`);
+        warnings.push(`${emp.name}님은 고정대기(${emp.fixedNightStandbySlot}) 배정 실패 (사유: 특이사항 중복 또는 시간대 불일치)`);
       }
     }
   });
