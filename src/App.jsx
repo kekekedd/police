@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
 import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
@@ -308,9 +308,9 @@ function App({ user }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDataInitialized, setIsDataInitialized] = useState(false);
   
-  // 서버로부터의 업데이트인지 확인하는 플래그 (자동 저장 방지용)
+  // 서버 데이터 보관용 (자동 저장 무한루프 방지)
   const lastServerSettings = useRef(null);
-
+  
   // 변경 사항 감지 및 이탈 방지 상태
   const [lastSavedRoster, setLastSavedRoster] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
@@ -378,16 +378,15 @@ function App({ user }) {
         const data = docSnap.data();
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
         
-        // 서버 데이터를 로컬에 반영 (병합 보강)
+        // 서버 데이터 우선 병합
         const newSettings = {
           ...DEFAULT_SETTINGS,
           ...data,
-          teams: migratedTeams.length > 0 ? migratedTeams : DEFAULT_SETTINGS.teams,
-          dutyTypes: data.dutyTypes || DEFAULT_SETTINGS.dutyTypes,
-          focusPlaces: data.focusPlaces || []
+          teams: migratedTeams.length > 0 ? migratedTeams : (settings.teams || DEFAULT_SETTINGS.teams),
+          dutyTypes: data.dutyTypes || settings.dutyTypes || DEFAULT_SETTINGS.dutyTypes,
+          focusPlaces: data.focusPlaces || settings.focusPlaces || []
         };
 
-        // 서버에서 온 데이터임을 기록하여 자동 저장을 방지
         lastServerSettings.current = JSON.stringify(newSettings);
         setSettings(newSettings);
         
@@ -406,7 +405,11 @@ function App({ user }) {
         }
       } else {
          setSettings(DEFAULT_SETTINGS);
-         lastServerSettings.current = JSON.stringify(DEFAULT_SETTINGS);
+         setTempStationSettings({ stationName: DEFAULT_SETTINGS.stationName, chiefName: DEFAULT_SETTINGS.chiefName });
+         if (DEFAULT_SETTINGS.teams.length > 0) {
+           setEmployeeTabTeam(DEFAULT_SETTINGS.teams[0].name);
+           setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, teamName: DEFAULT_SETTINGS.teams[0].name }}));
+         }
       }
       setIsDataInitialized(true);
     });
@@ -465,8 +468,18 @@ function App({ user }) {
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
     
-    // 현재 상태가 서버에서 온 상태와 동일하다면 저장을 건너뜁니다.
+    // 1. 서버 데이터와 동일하면 저장하지 않음 (무한 루프 및 덮어쓰기 방지)
     if (JSON.stringify(settings) === lastServerSettings.current) return;
+
+    // 2. 안전장치: 데이터가 급격히 줄어드는 경우(예: 5개 이상에서 0개로) 자동 저장을 차단
+    if (lastServerSettings.current) {
+      const lastCount = (JSON.parse(lastServerSettings.current).focusPlaces || []).length;
+      const currentCount = (settings.focusPlaces || []).length;
+      if (lastCount > 5 && currentCount === 0) {
+        console.warn("급격한 데이터 삭제 감지 - 자동 저장을 중단합니다.");
+        return;
+      }
+    }
 
     const timer = setTimeout(() => {
       setIsSyncing(true);
@@ -475,7 +488,7 @@ function App({ user }) {
           lastServerSettings.current = JSON.stringify(settings);
         })
         .finally(() => setIsSyncing(false));
-    }, 1500); 
+    }, 2000); 
     return () => clearTimeout(timer);
   }, [settings, user, isDataInitialized, isLoading]);
 
@@ -708,39 +721,18 @@ function App({ user }) {
     let curr = new Date(newNote.startDate);
     const end = new Date(newNote.endDate);
     const notesToSave = [];
-    const skippedDates = [];
 
     while (curr <= end) {
       const dateStr = curr.toISOString().split('T')[0];
-      
-      // 중복 체크: 동일 날짜, 동일 직원, 동일 유형 확인
-      const isDuplicate = specialNotes.some(n => 
-        n.date === dateStr && 
-        n.employeeId === newNote.employeeId && 
-        n.type === newNote.type
-      );
-
-      if (isDuplicate) {
-        skippedDates.push(dateStr);
-      } else {
-        const uniqueId = `${user.uid}_${dateStr}_${newNote.employeeId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        notesToSave.push(saveDocument('specialNotes', uniqueId, { ...newNote, date: dateStr, id: uniqueId, userId: user.uid }));
-      }
+      const uniqueId = `${user.uid}_${dateStr}_${newNote.employeeId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      notesToSave.push(saveDocument('specialNotes', uniqueId, { ...newNote, date: dateStr, id: uniqueId, userId: user.uid }));
       curr.setDate(curr.getDate() + 1);
     }
 
     try {
-      if (notesToSave.length > 0) {
-        await Promise.all(notesToSave);
-        if (skippedDates.length > 0) {
-          alert(`일부 날짜(${skippedDates.length}건)는 이미 동일한 특이사항이 있어 제외하고 등록되었습니다.`);
-        } else {
-          alert('특이사항이 기간별로 등록되었습니다.');
-        }
-      } else {
-        alert('선택한 기간에 이미 동일한 특이사항이 모두 등록되어 있습니다.');
-      }
+      await Promise.all(notesToSave);
       setNewNote({ ...newNote, employeeId: '', isAllDay: false });
+      alert('특이사항이 기간별로 등록되었습니다.');
     } catch (e) {
       alert('저장 실패');
     } finally {
@@ -807,6 +799,7 @@ function App({ user }) {
   const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
   
   // 지원근무자로 등록된 직원들 찾기 (특이사항 유형이 '지원근무'인 경우)
+  // [수정] 본인 팀이 아니고, 현재 작성 중인 근무표의 주/야 구분(shiftType)과 지원근무 설정이 일치하는 경우에만 포함
   const supportDutyStaff = employees.filter(emp => 
     emp.team !== currentRoster.metadata.teamName && 
     todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무' && n.supportShift === currentRoster.shiftType)
@@ -815,13 +808,19 @@ function App({ user }) {
   // 현황판용: 전체 직원 대상 특이사항 분류
   const stationAllDayNotes = todaysNotes.filter(n => n.isAllDay);
   
+  // [수정] 지원근무는 장기사고자(통계)에서 제외
   const stationLongTermCount = stationAllDayNotes.filter(n => n.type !== '지원근무').length;
+  const stationPartialNotes = todaysNotes.filter(n => !n.isAllDay);
+  const stationAbsenteeCount = stationPartialNotes.length;
+
+  // 근무표용: 현재 팀 직원 대상 모든 특이사항 (사고자 명단에 표시)
+  // [수정] 지원근무는 본인 팀 사고자 명단에서도 제외 (타 팀 지원이므로)
   const teamAbsentees = todaysNotes.filter(n => 
     n.type !== '지원근무' && 
     employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
   );
   
-  // 근무 배치 가능 인원
+  // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 + (주간일 경우 관리반 포함)
   const currentTeamEmployees = (() => {
     const teamEmps = employees
       .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
@@ -835,11 +834,14 @@ function App({ user }) {
     return [...teamEmps, ...adminEmps];
   })();
 
+  // [수정] 수동 입력 자원근무자 + 지원근무 특이사항 직원 합치기
   const combinedVolunteers = [
     ...(currentRoster.volunteerStaff || []),
     ...supportDutyStaff
   ];
   
+  const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
+
   if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div></div></div>);
 
   return (
@@ -1197,7 +1199,7 @@ function App({ user }) {
             <div className="section-header-with-action"><h2>특이사항 관리</h2></div>
             <div className="notes-container-v2">
               <div className="settings-card note-registration-card"><h3>특이사항 등록</h3><div className="note-form-v2">
-                <div className="note-input-row"><div className="note-input-group"><label>기간 설정</label><div className="date-range-picker"><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value, endDate: e.target.value < newNote.endDate ? newNote.endDate : e.target.value})} /><span>~</span><input type="date" value={newNote.endDate} onChange={e => setNewNote({...newNote, endDate: e.target.value})} min={newNote.startDate} /></div></div><div className="note-input-group"><label>유형</label><div className="btn-group">{NOTE_TYPES.map(t => <button key={t} className={`selection-btn ${newNote.type === t ? 'active' : ''}`} onClick={() => setNewNote({...newNote, type: t, isAllDay: ['휴가', '병가', '지원근무'].includes(t)})}>{t}</button>)}</div></div></div>
+                <div className="note-input-row"><div className="note-input-group"><label>기간 설정</label><div className="date-range-picker"><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value, endDate: e.target.value < newNote.endDate ? newNote.endDate : e.target.value})} /><span>~</span><input type="date" value={newNote.endDate} onChange={e => setNewNote({...newNote, endDate: e.target.value})} min={newNote.startDate} /></div></div><div className="note-input-group"><label>유형</label><div className="btn-group">{NOTE_TYPES.map(t => <button key={t} className={`selection-btn ${newNote.type === t ? 'active' : ''}`} onClick={() => setNewNote({...newNote, type: t, isAllDay: ['휴가', '병가'].includes(t)})}>{t}</button>)}</div></div></div>
                 <div className="note-input-group"><label>직원 선택 (팀 선택 필수)</label><div className="team-filter-tabs-mini">{settings.teams.map(t => <button key={t.name} className={`team-tab-btn-mini ${noteTeamFilter === t.name ? 'active' : ''}`} onClick={() => setNoteTeamFilter(t.name)}>{t.name}</button>)}</div>
                 {noteTeamFilter ? <div className="staff-selection-grid-mini scrollable">{employees.filter(e => e.team === noteTeamFilter).map(e => <div key={e.id} className={`staff-card-mini ${newNote.employeeId === e.id ? 'selected' : ''}`} onClick={() => setNewNote({...newNote, employeeId: e.id})}><span className="rank">{e.rank}</span><span className="name">{e.name}</span></div>)}</div> : <div className="empty-selection-placeholder">팀을 선택하세요.</div>}</div>
                 <div className="note-input-row">
@@ -1229,72 +1231,47 @@ function App({ user }) {
                 </div>
 </div></div>
               
-              <div className="settings-card notes-list-card">
-                <div className="card-header-with-action">
-                  <h3>
-                    {newNote.employeeId 
-                      ? `${employees.find(e => e.id === newNote.employeeId)?.name}님의 특이사항 이력` 
-                      : '특이사항 목록'}
-                  </h3>
-                  <div className="date-nav">
-                    {!newNote.employeeId ? (
-                      <><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value})} /><span>의 목록</span></>
-                    ) : (
-                      <button className="btn-save-small" style={{ fontSize: '0.7rem', padding: '4px 8px' }} onClick={() => setNewNote({...newNote, employeeId: ''})}>전체 보기로 복귀</button>
-                    )}
-                  </div>
-                </div>
-                <div className="notes-list-v2 scrollable">
-                  {(() => {
-                    const filteredNotes = newNote.employeeId 
-                      ? specialNotes.filter(n => n.employeeId === newNote.employeeId).sort((a, b) => b.date.localeCompare(a.date))
-                      : specialNotes.filter(n => n.date === newNote.startDate);
-
-                    if (filteredNotes.length === 0) return <div className="empty-state">목록 없음</div>;
-
-                    return filteredNotes.map(n => {
-                      const emp = employees.find(e => e.id === n.employeeId);
-                      return (
-                        <div key={n.id} className="note-item-v2">
-                          {editingNoteId === n.id ? (
-                            <div className="edit-note-inline">
-                              <select value={editingNoteValue.type} onChange={e => setEditingNoteValue({...editingNoteValue, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                              {editingNoteValue.type === '지원근무' ? (
-                                <select value={editingNoteValue.supportShift} onChange={e => setEditingNoteValue({...editingNoteValue, supportShift: e.target.value})}>
-                                  <option value="주간">주간 지원</option>
-                                  <option value="야간">야간 지원</option>
-                                </select>
-                              ) : (
-                                !editingNoteValue.isAllDay && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
-                                    <span>~</span>
-                                    <input type="time" value={editingNoteValue.endTime} onChange={e => setEditingNoteValue({...editingNoteValue, endTime: e.target.value})} />
-                                  </div>
-                                )
-                              )}
-                              <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
-                              <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
-                            </div>
+              <div className="settings-card notes-list-card"><div className="card-header-with-action"><h3>특이사항 목록</h3><div className="date-nav"><input type="date" value={newNote.startDate} onChange={e => setNewNote({...newNote, startDate: e.target.value})} /><span>의 목록</span></div></div><div className="notes-list-v2 scrollable">
+                {specialNotes.filter(n => n.date === newNote.startDate).length === 0 ? <div className="empty-state">목록 없음</div> : specialNotes.filter(n => n.date === newNote.startDate).map(n => {
+                  const emp = employees.find(e => e.id === n.employeeId);
+                  return (
+                    <div key={n.id} className="note-item-v2">
+                      {editingNoteId === n.id ? (
+                        <div className="edit-note-inline">
+                          <select value={editingNoteValue.type} onChange={e => setEditingNoteValue({...editingNoteValue, type: e.target.value})}>{NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                          {editingNoteValue.type === '지원근무' ? (
+                            <select value={editingNoteValue.supportShift} onChange={e => setEditingNoteValue({...editingNoteValue, supportShift: e.target.value})}>
+                              <option value="주간">주간 지원</option>
+                              <option value="야간">야간 지원</option>
+                            </select>
                           ) : (
-                            <><div className="note-info">
-                              {newNote.employeeId && <span className="note-date" style={{ fontWeight: 'bold', color: '#1a237e', marginRight: '8px', fontSize: '0.85rem' }}>{n.date}</span>}
-                              <span className="emp-name">{emp?.rank} {emp?.name}</span>
-                              <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
-                              <span className="note-time">
-                                {n.type === '지원근무' 
-                                  ? `${n.supportShift} 지원` 
-                                  : (n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`)}
-                              </span>
-                            </div>
-                            <div className="action-btns"><button className="edit-btn-icon" onClick={() => {setEditingNoteId(n.id); setEditingNoteValue(n);}}><Edit2 size={14} /></button><button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button></div></>
+                            !editingNoteValue.isAllDay && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input type="time" value={editingNoteValue.startTime} onChange={e => setEditingNoteValue({...editingNoteValue, startTime: e.target.value})} />
+                                <span>~</span>
+                                <input type="time" value={editingNoteValue.endTime} onChange={e => setEditingNoteValue({...editingNoteValue, endTime: e.target.value})} />
+                              </div>
+                            )
                           )}
+                          <button onClick={() => updateNote(n.id, editingNoteValue)} className="btn-save-icon"><Check size={16} /></button>
+                          <button onClick={() => setEditingNoteId(null)} className="btn-cancel-icon"><X size={16} /></button>
                         </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
+                      ) : (
+                        <><div className="note-info">
+                          <span className="emp-name">{emp?.rank} {emp?.name}</span>
+                          <span className={`note-tag-v2 ${n.type}`}>{n.type}</span>
+                          <span className="note-time">
+                            {n.type === '지원근무' 
+                              ? `${n.supportShift} 지원` 
+                              : (n.isAllDay ? '종일' : `${n.startTime} ~ ${n.endTime}`)}
+                          </span>
+                        </div>
+                        <div className="action-btns"><button className="edit-btn-icon" onClick={() => {setEditingNoteId(n.id); setEditingNoteValue(n);}}><Edit2 size={14} /></button><button className="delete-btn-icon" onClick={() => deleteNote(n.id)}><Trash size={16} /></button></div></>
+                      )}
+                    </div>
+                  );
+                })}
+              </div></div>
             </div>
           </div>
         )}
