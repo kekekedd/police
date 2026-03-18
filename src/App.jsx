@@ -491,19 +491,61 @@ function App({ user }) {
     setCurrentRoster(prev => ({ ...prev, focusAreas: { ...prev.focusAreas, [`${slot}_${duty}`]: value } }));
   };
 
-  // 우클릭 메뉴 핸들러
+  // 우클릭 메뉴 핸들러 (즉시 복사/붙여넣기)
   const handleContextMenu = (e, slot, duty) => {
     e.preventDefault();
-    setContextMenu({
-      visible: true,
-      x: e.pageX,
-      y: e.pageY,
-      slot,
-      duty
-    });
+    const key = `${slot}_${duty}`;
+    const currentIds = currentRoster.assignments[key] || [];
+
+    if (currentIds.length > 0) {
+      // 1. 직원이 있는 칸 -> 복사
+      setCopiedStaff([...currentIds]);
+      alert('해당 칸의 명단이 복사되었습니다.');
+    } else {
+      // 2. 빈 칸 -> 붙여넣기
+      if (!copiedStaff || copiedStaff.length === 0) return;
+
+      // 배치 가능 여부 체크
+      const [s, end] = slot.split('-');
+      const unavailableNames = [];
+
+      copiedStaff.forEach(id => {
+        const emp = employees.find(e => e.id === id);
+        if (!emp) return;
+
+        // 특이사항 체크
+        const availability = checkAvailability(emp, s, end, todaysNotes);
+        if (!availability.available) {
+          unavailableNames.push(`${emp.name}(특이사항: ${availability.reason})`);
+          return;
+        }
+
+        // 중복 근무 체크 (현재 시간대(slot)의 다른 근무들 확인)
+        const otherDuty = settings.dutyTypes.find(d => 
+          d.name !== duty && (currentRoster.assignments[`${slot}_${d.name}`] || []).includes(id)
+        );
+        if (otherDuty) {
+          unavailableNames.push(`${emp.name}(중복: ${otherDuty.name})`);
+        }
+      });
+
+      if (unavailableNames.length > 0) {
+        alert(`배치 불가:\n${unavailableNames.join('\n')}`);
+        return;
+      }
+
+      // 모든 직원 배치 가능 시 붙여넣기 실행
+      setCurrentRoster(prev => ({
+        ...prev,
+        assignments: {
+          ...prev.assignments,
+          [key]: [...copiedStaff]
+        }
+      }));
+    }
   };
 
-  // 클릭 시 메뉴 닫기
+  // 기존 handleClick/useEffect (contextMenu 관련) 삭제 가능하지만 안전을 위해 유지하거나 정리
   useEffect(() => {
     const handleClick = () => setContextMenu(prev => ({ ...prev, visible: false }));
     if (contextMenu.visible) {
@@ -511,30 +553,6 @@ function App({ user }) {
     }
     return () => window.removeEventListener('click', handleClick);
   }, [contextMenu.visible]);
-
-  const copyAssignments = () => {
-    const key = `${contextMenu.slot}_${contextMenu.duty}`;
-    const staffIds = currentRoster.assignments[key] || [];
-    if (staffIds.length === 0) {
-      alert('복사할 직원이 없습니다.');
-      return;
-    }
-    setCopiedStaff(staffIds);
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  const pasteAssignments = () => {
-    if (!copiedStaff) return;
-    const key = `${contextMenu.slot}_${contextMenu.duty}`;
-    setCurrentRoster(prev => ({
-      ...prev,
-      assignments: {
-        ...prev.assignments,
-        [key]: [...copiedStaff]
-      }
-    }));
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
 
   const addNote = async () => {
     if (!newNote.employeeId || !newNote.startDate || !newNote.endDate) return alert('직원과 기간을 선택하세요.');
@@ -900,24 +918,6 @@ function App({ user }) {
                 </tbody>
               </table>
             </div>
-
-            {/* 커스텀 컨텍스트 메뉴 */}
-            {contextMenu.visible && (
-              <div 
-                className="custom-context-menu no-print"
-                style={{ top: contextMenu.y, left: contextMenu.x }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button onClick={copyAssignments}><RefreshCw size={14} /> 명단 복사하기</button>
-                <button 
-                  onClick={pasteAssignments} 
-                  disabled={!copiedStaff}
-                  style={{ opacity: copiedStaff ? 1 : 0.5 }}
-                >
-                  <Save size={14} /> 명단 붙여넣기
-                </button>
-              </div>
-            )}
 
             <StaffSelectionModal 
               isOpen={modalState.isOpen} 
