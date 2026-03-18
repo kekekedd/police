@@ -26,19 +26,17 @@ export const isTimeOverlapping = (start1, end1, start2, end2) => {
 export const checkAvailability = (employee, slotStart, slotEnd, specialNotes, dutyName = '', currentSlot = '') => {
   if (!employee) return { available: false, reason: '정보없음' };
   
-  // 고정 대기 규칙
   if (employee.isFixedNightStandby && employee.fixedNightStandbySlot) {
     const isStandbyDuty = dutyName === '대기근무';
     const [fs, fe] = employee.fixedNightStandbySlot.split('-');
     const isDuringFixed = isTimeOverlapping(slotStart, slotEnd, fs, fe);
     if (isDuringFixed) {
-      if (!isStandbyDuty) return { available: false, reason: `고정대기(${employee.fixedNightStandbySlot})` };
+      if (!isStandbyDuty) return { available: false, reason: `고정대기` };
     } else if (isStandbyDuty) {
       return { available: false, reason: `고정외대기불가` };
     }
   }
 
-  // 야간 제외 체크
   if (employee.isNightShiftExcluded) {
     const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
     const s = toMin(slotStart);
@@ -92,7 +90,7 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
     }
   });
 
-  // 2. 순환 휠(Pool) 구성 (고정대기 제외)
+  // 2. 순환 대상자 풀 구성 (계급/성명순 고정 줄 세우기)
   const rotationPool = teamEmps
     .filter(e => e.isStandbyRotationEligible && !e.isFixedNightStandby)
     .sort((a, b) => {
@@ -102,44 +100,36 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
       return a.name.localeCompare(b.name);
     });
 
-  if (rotationPool.length === 0) return { assignments: finalAssignments, warnings: [`${teamName} 가용 순환 인원 없음`] };
+  if (rotationPool.length === 0 && usedIds.size === 0) return { assignments: [], warnings: ["가용 인원 없음"] };
 
-  // 3. 시작점 찾기 (이전 3조 시작자 -> 오늘 1조 시작자)
+  // 3. 시작점 찾기 (중요: 이전 3조 -> 오늘 1조)
   let startIndex = 0;
   if (prevRoster && prevRoster.assignments) {
     const prev = prevRoster.assignments;
-    // 04:00-06:00 슬롯이 3조의 대표 슬롯
-    const prevG3Ids = prev["04:00-06:00_대기근무"] || [];
-    const anchorId = prevG3Ids[0];
+    // 이전 3조(04-07) 인원 중 한 명을 찾아 그 다음 순번을 오늘 1조 시작점으로 잡음
+    const prevG3Ids = prev["04:00-06:00_대기근무"] || prev["06:00-07:00_대기근무"] || [];
+    const anchorId = prevG3Ids[0]; 
     const foundIdx = rotationPool.findIndex(e => e.id === anchorId);
-    if (foundIdx !== -1) startIndex = foundIdx;
-    else {
-      // 못 찾으면 2조의 마지막 사람 다음 인덱스로 시도
-      const prevG2Ids = prev["01:00-02:00_대기근무"] || [];
-      const lastG2Id = prevG2Ids[prevG2Ids.length - 1];
-      const lastG2Idx = rotationPool.findIndex(e => e.id === lastG2Id);
-      if (lastG2Idx !== -1) startIndex = (lastG2Idx + 1) % rotationPool.length;
+    if (foundIdx !== -1) {
+      startIndex = foundIdx; // 이전 3조 시작자(C)가 오늘 1조 시작자가 됨
     }
   }
 
-  // 4. 공평한 분배 및 배치
+  // 4. 순차 배치
   const targetPerGroup = Math.floor(rotationPool.length / 3);
   const remainder = rotationPool.length % 3;
   let currentWheelIdx = startIndex;
 
   standbyBlocks.forEach((block, groupIdx) => {
-    const assignedFixedCount = new Set(finalAssignments.filter(a => block.slots.includes(a.slot)).map(a => a.employeeId)).size;
+    const alreadyFixed = new Set(finalAssignments.filter(a => block.slots.includes(a.slot)).map(a => a.employeeId)).size;
     const groupTarget = targetPerGroup + (groupIdx < remainder ? 1 : 0);
-    let assignedCount = assignedFixedCount;
-    let checkedInPool = 0;
+    let assignedCount = alreadyFixed;
+    let checked = 0;
 
-    while (assignedCount < groupTarget && checkedInPool < rotationPool.length) {
+    while (assignedCount < groupTarget && checked < rotationPool.length) {
       const candidate = rotationPool[currentWheelIdx];
       if (!usedIds.has(candidate.id)) {
-        const isAvail = block.slots.every(s => {
-          const [st, en] = s.split('-');
-          return checkAvailability(candidate, st, en, specialNotes, '대기근무', s).available;
-        });
+        const isAvail = block.slots.every(s => checkAvailability(candidate, s.split('-')[0], s.split('-')[1], specialNotes, '대기근무', s).available);
         if (isAvail) {
           block.slots.forEach(s => finalAssignments.push({ slot: s, employeeId: candidate.id }));
           usedIds.add(candidate.id);
@@ -147,57 +137,28 @@ export const rotateStandbyGroups = (prevRoster, employees, specialNotes, teamNam
         }
       }
       currentWheelIdx = (currentWheelIdx + 1) % rotationPool.length;
-      checkedInPool++;
-    }
-    if (assignedCount < groupTarget && rotationPool.some(e => !usedIds.has(e.id))) {
-      warnings.push(`${block.label} 인원 부족`);
+      checked++;
     }
   });
 
   return { assignments: finalAssignments, warnings };
 };
 
-// 전체 근무 자동 생성 로직
+// 전체 근무 자동 생성 (현재는 '대기근무'만 처리하도록 대폭 간소화)
 export const autoAssignRoster = (currentRoster, prevRoster, employees, specialNotes, dutyTypes, timeSlots) => {
   const assignments = {};
-  const focusAreas = {};
-  const warnings = [];
   const teamName = currentRoster.metadata.teamName;
 
-  // 1. 대기 근무 배치
+  // 1. 오직 대기 근무만 순환 배치합니다.
   if (currentRoster.shiftType === '야간') {
-    const { assignments: standby, warnings: w } = rotateStandbyGroups(prevRoster, employees, specialNotes, teamName);
+    const { assignments: standby } = rotateStandbyGroups(prevRoster, employees, specialNotes, teamName);
     standby.forEach(as => {
       const k = `${as.slot}_대기근무`;
       if (!assignments[k]) assignments[k] = [];
       assignments[k].push(as.employeeId);
     });
-    warnings.push(...w);
   }
 
-  // 2. 가용 인원 (대기 안 하는 팀원)
-  const usedIds = new Set(Object.values(assignments).flat());
-  const pool = employees
-    .filter(e => e.team === teamName && !e.isAdminStaff && !usedIds.has(e.id))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  // 3. 기타 근무 순차 배치
-  const duties = dutyTypes.filter(d => d.name !== '대기근무' && !d.name.includes('중점'));
-  let pIdx = 0;
-  timeSlots.forEach(slot => {
-    duties.forEach(duty => {
-      if (pIdx < pool.length) {
-        const candidate = pool[pIdx];
-        const [s, e] = slot.split('-');
-        if (checkAvailability(candidate, s, e, specialNotes, duty.name, slot).available) {
-          const k = `${slot}_${duty.name}`;
-          if (!assignments[k]) assignments[k] = [];
-          assignments[k].push(candidate.id);
-          pIdx = (pIdx + 1) % pool.length;
-        }
-      }
-    });
-  });
-
-  return { assignments, focusAreas, warnings };
+  // 나머지 일반 근무(순찰 등)는 규칙이 정해질 때까지 건드리지 않고 빈 칸으로 유지합니다.
+  return { assignments, focusAreas: {}, warnings: [] };
 };
