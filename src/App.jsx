@@ -618,8 +618,7 @@ function App({ user }) {
     
     setIsSyncing(true);
     try {
-      // 최근 4일, 8일, 12일 기록을 순차적으로 확인
-      const lookbackDays = [4, 8, 12];
+      const lookbackDays = [4, 8, 12, 16];
       const prevRosters = [];
       for (const d of lookbackDays) {
         const dateObj = new Date(currentRoster.date);
@@ -635,16 +634,14 @@ function App({ user }) {
         return;
       }
 
-      // [핵심] 4일 전 시점의 '가상 이전 상태'를 완벽하게 재구성
-      const virtualPrevGroups = {};
+      // 모든 순환 대상 직원들에 대해 개별적으로 오늘 속해야 할 그룹(todayG)을 계산
+      const todayRotationGroups = {};
       const eligibleEmployees = employees.filter(e => e.team === currentRoster.metadata.teamName && e.isStandbyRotationEligible && !e.isFixedNightStandby);
 
       eligibleEmployees.forEach(emp => {
-        // 가장 최근(4일, 8일, 12일...) 기록 중 이 직원이 존재했던 가장 가까운 날을 찾음
+        let found = false;
         for (const roster of prevRosters) {
           let lastGroup = roster.data.standbyRotationGroups?.[emp.id];
-          
-          // 그룹 정보가 없으면 배치표에서 추측
           if (!lastGroup) {
             for (const gName in standbyGroups) {
               if (standbyGroups[gName].some(slot => (roster.data.assignments?.[`${slot}_대기근무`] || []).includes(emp.id))) {
@@ -655,30 +652,78 @@ function App({ user }) {
           }
 
           if (lastGroup) {
-            // 찾은 과거 시점에서 4일 전(Virtual Previous)까지 몇 단계(Step)가 남았는지 계산
-            const stepsToVirtualPrev = (roster.days - 4) / 4;
+            // [계산식] 오늘 시점의 그룹 = 마지막 확인된 그룹 + (경과일수 / 4) 단계만큼 순환
+            const steps = roster.days / 4;
             let currentG = lastGroup;
-            for (let i = 0; i < stepsToVirtualPrev; i++) {
+            for (let i = 0; i < steps; i++) {
               if (currentG === 'A') currentG = 'B';
               else if (currentG === 'B') currentG = 'C';
               else if (currentG === 'C') currentG = 'A';
             }
-            virtualPrevGroups[emp.id] = currentG;
-            break; // 찾았으므로 다음 직원으로
+            todayRotationGroups[emp.id] = currentG;
+            found = true;
+            break;
           }
+        }
+        
+        // 과거 기록이 아예 없는 신규 인원은 인원 균형을 위해 임시 배정 (A, B, C 순)
+        if (!found) {
+          const counts = { A: 0, B: 0, C: 0 };
+          Object.values(todayRotationGroups).forEach(g => counts[g]++);
+          todayRotationGroups[emp.id] = Object.keys(counts).reduce((a, b) => counts[a] <= counts[b] ? a : b);
         }
       });
 
-      // 재구성된 가상 4일 전 데이터를 엔진에 전달 (엔진이 여기서 한 단계 더 넘겨서 '오늘' 조를 결정함)
-      const { assignments: newStandbyAssignments, warnings, standbyRotationGroups } = rotateNightStandby(
-        { assignments: {}, standbyRotationGroups: virtualPrevGroups },
-        employees, todaysNotes, currentRoster.metadata.teamName
-      );
+      // 계산된 오늘 그룹 정보를 바탕으로 실제 배정 시도 (rotateNightStandby의 내부 로직 일부 차용 또는 직접 처리)
+      const newStandbyAssignments = {};
+      const warnings = [];
+
+      eligibleEmployees.forEach(employee => {
+        const groupName = todayRotationGroups[employee.id];
+        const slotsToFill = standbyGroups[groupName];
+        let assignedAny = false;
+        let lastBlockedReason = "";
+
+        slotsToFill.forEach(slot => {
+          const [start, end] = slot.split('-');
+          const { available, reason } = checkAvailability(employee, start, end, todaysNotes, '대기근무');
+          if (available) {
+            const key = `${slot}_대기근무`;
+            if (!newStandbyAssignments[key]) newStandbyAssignments[key] = [];
+            newStandbyAssignments[key].push(employee.id);
+            assignedAny = true;
+          } else {
+            lastBlockedReason = reason;
+          }
+        });
+
+        if (!assignedAny) {
+          warnings.push(`${employee.name}님(${groupName}조) 제외 사유: ${lastBlockedReason}`);
+        }
+      });
+
+      // 고정 대기자 추가 배치
+      employees.filter(e => e.team === currentRoster.metadata.teamName && e.isFixedNightStandby).forEach(emp => {
+        if (emp.fixedNightStandbySlot) {
+          const [fStart, fEnd] = emp.fixedNightStandbySlot.split('-');
+          allStandbySlots.forEach(slot => {
+            const [sStart, sEnd] = slot.split('-');
+            if (isTimeOverlapping(fStart, fEnd, sStart, sEnd)) {
+              const { available } = checkAvailability(emp, sStart, sEnd, todaysNotes, '대기근무');
+              if (available) {
+                const key = `${slot}_대기근무`;
+                if (!newStandbyAssignments[key]) newStandbyAssignments[key] = [];
+                newStandbyAssignments[key].push(emp.id);
+              }
+            }
+          });
+        }
+      });
 
       setCurrentRoster(prev => {
         const updated = { ...prev.assignments };
         Object.keys(updated).forEach(k => k.endsWith('_대기근무') && delete updated[k]);
-        return { ...prev, assignments: { ...updated, ...newStandbyAssignments }, standbyRotationGroups };
+        return { ...prev, assignments: { ...updated, ...newStandbyAssignments }, standbyRotationGroups: todayRotationGroups };
       });
 
       if (warnings.length > 0) alert(`대기근무 순환 완료.\n주의사항:\n- ${warnings.join('\n- ')}`);

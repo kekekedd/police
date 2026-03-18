@@ -83,7 +83,7 @@ const standbyGroups = {
 };
 
 // 4일 전 근무 기록을 바탕으로 야간 대기근무를 순환시키는 새로운 핵심 함수
-export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesForToday, teamName) => {
+export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesForToday, teamName, steps = 1) => {
   const newAssignments = {};
   const warnings = [];
   const processedEmployeeIds = new Set();
@@ -119,25 +119,29 @@ export const rotateNightStandby = (prev4DaysRoster, allEmployees, specialNotesFo
   const prevAssignments = prev4DaysRoster?.assignments || {};
 
   eligibleEmployees.forEach((emp, idx) => {
-    let prevG = prevGroups[emp.id];
+    let baseG = prevGroups[emp.id];
 
     // 이전 기록에서 그룹 찾기 (직접 배정표 뒤지기)
-    if (!prevG) {
+    if (!baseG) {
       for (const gName in standbyGroups) {
         if (standbyGroups[gName].some(slot => (prevAssignments[`${slot}_대기근무`] || []).includes(emp.id))) {
-          prevG = gName;
+          baseG = gName;
           break;
         }
       }
     }
 
     // 오늘 그룹 결정 (순환: A->B, B->C, C->A)
-    let todayG;
-    if (prevG === 'A') todayG = 'B';
-    else if (prevG === 'B') todayG = 'C';
-    else if (prevG === 'C') todayG = 'A';
-    else {
-      // 아예 기록이 없는 신규 인원만 인원수 맞춰 분배
+    let todayG = baseG;
+    if (baseG) {
+      // steps 만큼 순환 시키기
+      for (let i = 0; i < steps; i++) {
+        if (todayG === 'A') todayG = 'B';
+        else if (todayG === 'B') todayG = 'C';
+        else if (todayG === 'C') todayG = 'A';
+      }
+    } else {
+      // 아예 기록이 없는 신규 인원만 인원수 맞춰 분배 (기본적으로 A조부터 시작하되 중복 최소화)
       todayG = ['A', 'B', 'C'][idx % 3];
     }
     todayRotationGroups[emp.id] = todayG;
