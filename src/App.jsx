@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Calendar, Shield, Plus, Trash, Save, Printer, RefreshCw, X, Settings, Edit2, ChevronDown, ChevronUp, Check, Eye, EyeOff } from 'lucide-react';
 import { rotateStandbyGroups, isTimeOverlapping, checkAvailability } from './utils/rotation';
 import { auth, db, saveDocument, removeDocument } from './firebase';
@@ -308,6 +308,9 @@ function App({ user }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDataInitialized, setIsDataInitialized] = useState(false);
   
+  // 서버로부터의 업데이트인지 확인하는 플래그 (자동 저장 방지용)
+  const lastServerSettings = useRef(null);
+
   // 변경 사항 감지 및 이탈 방지 상태
   const [lastSavedRoster, setLastSavedRoster] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
@@ -375,21 +378,18 @@ function App({ user }) {
         const data = docSnap.data();
         const migratedTeams = data.teams?.map(t => typeof t === 'string' ? {name: t, isVisible: true} : t) || [];
         
-        setSettings(prev => {
-          // 서버 데이터(data)를 가져오되, 만약 서버의 focusPlaces가 비어있고 
-          // 로컬(prev)에 데이터가 있다면 로컬 데이터를 우선 보호합니다.
-          const serverFocusPlaces = data.focusPlaces || [];
-          const currentFocusPlaces = (serverFocusPlaces.length > 0) 
-            ? serverFocusPlaces 
-            : (prev.focusPlaces && prev.focusPlaces.length > 0 ? prev.focusPlaces : []);
+        // 서버 데이터를 로컬에 반영 (병합 보강)
+        const newSettings = {
+          ...DEFAULT_SETTINGS,
+          ...data,
+          teams: migratedTeams.length > 0 ? migratedTeams : DEFAULT_SETTINGS.teams,
+          dutyTypes: data.dutyTypes || DEFAULT_SETTINGS.dutyTypes,
+          focusPlaces: data.focusPlaces || []
+        };
 
-          return {
-            ...DEFAULT_SETTINGS,
-            ...data,
-            teams: migratedTeams,
-            focusPlaces: currentFocusPlaces
-          };
-        });
+        // 서버에서 온 데이터임을 기록하여 자동 저장을 방지
+        lastServerSettings.current = JSON.stringify(newSettings);
+        setSettings(newSettings);
         
         setTempStationSettings({ 
           stationName: data.stationName || DEFAULT_SETTINGS.stationName, 
@@ -406,11 +406,7 @@ function App({ user }) {
         }
       } else {
          setSettings(DEFAULT_SETTINGS);
-         setTempStationSettings({ stationName: DEFAULT_SETTINGS.stationName, chiefName: DEFAULT_SETTINGS.chiefName });
-         if (DEFAULT_SETTINGS.teams.length > 0) {
-           setEmployeeTabTeam(DEFAULT_SETTINGS.teams[0].name);
-           setCurrentRoster(prev => ({...prev, metadata: {...prev.metadata, teamName: DEFAULT_SETTINGS.teams[0].name }}));
-         }
+         lastServerSettings.current = JSON.stringify(DEFAULT_SETTINGS);
       }
       setIsDataInitialized(true);
     });
@@ -468,11 +464,18 @@ function App({ user }) {
   // 설정 자동 저장
   useEffect(() => {
     if (!user || !isDataInitialized || isLoading) return;
+    
+    // 현재 상태가 서버에서 온 상태와 동일하다면 저장을 건너뜁니다.
+    if (JSON.stringify(settings) === lastServerSettings.current) return;
+
     const timer = setTimeout(() => {
       setIsSyncing(true);
       saveDocument('settings', user.uid, { ...settings, userId: user.uid })
+        .then(() => {
+          lastServerSettings.current = JSON.stringify(settings);
+        })
         .finally(() => setIsSyncing(false));
-    }, 1000); // 2000 -> 1000 (shorter debounce)
+    }, 1500); 
     return () => clearTimeout(timer);
   }, [settings, user, isDataInitialized, isLoading]);
 
@@ -804,7 +807,6 @@ function App({ user }) {
   const todaysNotes = specialNotes.filter(n => n.date === currentRoster.date);
   
   // 지원근무자로 등록된 직원들 찾기 (특이사항 유형이 '지원근무'인 경우)
-  // [수정] 본인 팀이 아니고, 현재 작성 중인 근무표의 주/야 구분(shiftType)과 지원근무 설정이 일치하는 경우에만 포함
   const supportDutyStaff = employees.filter(emp => 
     emp.team !== currentRoster.metadata.teamName && 
     todaysNotes.some(n => n.employeeId === emp.id && n.type === '지원근무' && n.supportShift === currentRoster.shiftType)
@@ -813,19 +815,13 @@ function App({ user }) {
   // 현황판용: 전체 직원 대상 특이사항 분류
   const stationAllDayNotes = todaysNotes.filter(n => n.isAllDay);
   
-  // [수정] 지원근무는 장기사고자(통계)에서 제외
   const stationLongTermCount = stationAllDayNotes.filter(n => n.type !== '지원근무').length;
-  const stationPartialNotes = todaysNotes.filter(n => !n.isAllDay);
-  const stationAbsenteeCount = stationPartialNotes.length;
-
-  // 근무표용: 현재 팀 직원 대상 모든 특이사항 (사고자 명단에 표시)
-  // [수정] 지원근무는 본인 팀 사고자 명단에서도 제외 (타 팀 지원이므로)
   const teamAbsentees = todaysNotes.filter(n => 
     n.type !== '지원근무' && 
     employees.some(e => e.id === n.employeeId && e.team === currentRoster.metadata.teamName)
   );
   
-  // 근무 배치 가능 인원: 종일 특이사항이 없는 팀원 + (주간일 경우 관리반 포함)
+  // 근무 배치 가능 인원
   const currentTeamEmployees = (() => {
     const teamEmps = employees
       .filter(e => e.team === currentRoster.metadata.teamName && !e.isAdminStaff && !stationAllDayNotes.some(n => n.employeeId === e.id))
@@ -839,14 +835,11 @@ function App({ user }) {
     return [...teamEmps, ...adminEmps];
   })();
 
-  // [수정] 수동 입력 자원근무자 + 지원근무 특이사항 직원 합치기
   const combinedVolunteers = [
     ...(currentRoster.volunteerStaff || []),
     ...supportDutyStaff
   ];
   
-  const assignedAdminCount = employees.filter(e => e.isAdminStaff && Object.values(currentRoster.assignments).some(ids => ids.includes(e.id))).length;
-
   if (isLoading || !isDataInitialized) return (<div className="loading-screen"><div className="loader-container"><div className="loader-spinner"></div><div className="loader-text">데이터를 안전하게 불러오는 중입니다...</div></div></div>);
 
   return (
